@@ -1,8 +1,9 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import type { Database } from "../../types/database";
 
-let client: SupabaseClient | undefined;
+let client: SupabaseClient<Database> | undefined;
 
-export function getPublicSupabaseClient(): SupabaseClient {
+export function getPublicSupabaseClient(): SupabaseClient<Database> {
   if (client) {
     return client;
   }
@@ -14,7 +15,7 @@ export function getPublicSupabaseClient(): SupabaseClient {
     throw new Error("Faltan las variables públicas de Supabase.");
   }
 
-  client = createClient(url, key, {
+  client = createClient<Database>(url, key, {
     auth: {
       autoRefreshToken: false,
       persistSession: false,
