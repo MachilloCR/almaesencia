@@ -4,6 +4,7 @@ import type { CategoryInput, ProductInput } from "../validations/admin-catalog";
 
 type CategoryRow = Database["public"]["Tables"]["categories"]["Row"];
 type ProductRow = Database["public"]["Tables"]["products"]["Row"];
+type InventoryRow = Database["public"]["Tables"]["inventory"]["Row"];
 
 export type AdminCategory = Pick<CategoryRow, "id" | "name" | "slug" | "description" | "is_active">;
 export type AdminProduct = Pick<
@@ -18,6 +19,7 @@ export type AdminProduct = Pick<
   | "availability_status"
   | "is_active"
 >;
+export type AdminInventoryItem = Pick<InventoryRow, "product_id" | "quantity" | "updated_at">;
 
 type AdminSupabaseClient = SupabaseClient<Database>;
 
@@ -166,4 +168,54 @@ export async function updateProduct(
   }
 
   return data as AdminProduct;
+}
+
+export async function getAdminInventoryData(supabase: AdminSupabaseClient) {
+  const { data, error } = await supabase
+    .from("inventory")
+    .select("product_id, quantity, updated_at")
+    .order("updated_at", { ascending: false });
+
+  if (error) {
+    throw new Error("No fue posible cargar el inventario.");
+  }
+
+  return data as AdminInventoryItem[];
+}
+
+export async function updateInventoryQuantity(
+  supabase: AdminSupabaseClient,
+  productId: string,
+  quantity: number,
+  updatedBy: string,
+) {
+  const { data, error } = await supabase
+    .from("inventory")
+    .update({ quantity, updated_by: updatedBy })
+    .eq("product_id", productId)
+    .select("product_id, quantity, updated_at")
+    .single();
+
+  if (error) {
+    throw new Error("No fue posible actualizar las existencias.");
+  }
+
+  return data as AdminInventoryItem;
+}
+
+export async function markProductOutOfStock(
+  supabase: AdminSupabaseClient,
+  productId: string,
+  updatedBy: string,
+) {
+  const { error: productError } = await supabase
+    .from("products")
+    .update({ availability_status: "out_of_stock" })
+    .eq("id", productId);
+
+  if (productError) {
+    throw new Error("No fue posible marcar el producto como agotado.");
+  }
+
+  return updateInventoryQuantity(supabase, productId, 0, updatedBy);
 }

@@ -1,7 +1,8 @@
 ---
 import CatalogManager from "../../components/admin/CatalogManager";
+import InventoryManager from "../../components/admin/InventoryManager";
 import BaseLayout from "../../layouts/BaseLayout.astro";
-import { getAdminCatalogData } from "../../services/admin-catalog";
+import { getAdminCatalogData, getAdminInventoryData } from "../../services/admin-catalog";
 
 const { supabase, user } = Astro.locals;
 
@@ -20,11 +21,14 @@ if (profile?.role !== "admin") {
   return Astro.redirect("/admin/login?error=unauthorized");
 }
 
-const { categories, products } = await getAdminCatalogData(supabase);
+const [{ categories, products }, inventory] = await Promise.all([
+  getAdminCatalogData(supabase),
+  getAdminInventoryData(supabase),
+]);
 ---
 
 <BaseLayout title="Panel administrativo | Alma Esencia CR">
-  <main class="mx-auto min-h-screen max-w-7xl px-4 py-12 sm:px-8">
+  <main class="min-h-screen w-full px-4 py-12 sm:px-8 lg:px-10 xl:px-14">
     <header class="flex flex-col gap-6 border-b border-border-subtle pb-8 sm:flex-row sm:items-end sm:justify-between">
       <div>
         <p class="text-xs font-semibold tracking-[0.14em] text-brand-primary uppercase">
@@ -46,6 +50,7 @@ const { categories, products } = await getAdminCatalogData(supabase);
 
     <div class="mt-10">
       <CatalogManager client:load initialCategories={categories} initialProducts={products} />
+      <InventoryManager client:load initialInventory={inventory} products={products} categories={categories} />
     </div>
   </main>
 </BaseLayout>

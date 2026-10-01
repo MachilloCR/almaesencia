@@ -107,6 +107,7 @@ export default function CatalogManager({ initialCategories, initialProducts }: P
         },
       );
       setProducts((current) => [product, ...current.filter((item) => item.id !== product.id)]);
+      window.dispatchEvent(new CustomEvent<AdminProduct>("admin:product-changed", { detail: product }));
       reset();
     } catch {
       // Sileo informa el error.
