@@ -1,5 +1,7 @@
 ---
+import CatalogManager from "../../components/admin/CatalogManager";
 import BaseLayout from "../../layouts/BaseLayout.astro";
+import { getAdminCatalogData } from "../../services/admin-catalog";
 
 const { supabase, user } = Astro.locals;
 
@@ -17,10 +19,12 @@ if (profile?.role !== "admin") {
   await supabase.auth.signOut();
   return Astro.redirect("/admin/login?error=unauthorized");
 }
+
+const { categories, products } = await getAdminCatalogData(supabase);
 ---
 
 <BaseLayout title="Panel administrativo | Alma Esencia CR">
-  <main class="mx-auto min-h-screen max-w-5xl px-4 py-12 sm:px-8">
+  <main class="mx-auto min-h-screen max-w-7xl px-4 py-12 sm:px-8">
     <header class="flex flex-col gap-6 border-b border-border-subtle pb-8 sm:flex-row sm:items-end sm:justify-between">
       <div>
         <p class="text-xs font-semibold tracking-[0.14em] text-brand-primary uppercase">
@@ -40,11 +44,8 @@ if (profile?.role !== "admin") {
       </form>
     </header>
 
-    <section class="mt-10 rounded-[20px] border border-border-subtle bg-surface-card p-6 shadow-[0_4px_20px_-2px_rgba(134,54,93,0.05)] sm:p-8">
-      <h2 class="font-display text-2xl font-semibold text-text-primary">Todo listo para administrar</h2>
-      <p class="mt-3 max-w-2xl text-sm leading-6 text-text-secondary">
-        El acceso está protegido. El siguiente paso será construir la gestión de productos, inventario y solicitudes de pedido.
-      </p>
-    </section>
+    <div class="mt-10">
+      <CatalogManager client:load initialCategories={categories} initialProducts={products} />
+    </div>
   </main>
 </BaseLayout>
