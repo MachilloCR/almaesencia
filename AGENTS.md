@@ -236,7 +236,7 @@ No dupliques lógica de negocio entre componentes.
 
 Supabase proporciona PostgreSQL, autenticación de administradores y Storage. Usa Row Level Security (RLS) y protege las operaciones administrativas.
 
-Nunca expongas una clave `service_role` en código cliente. Usa variables de entorno para secretos y nunca incluyas secretos en Git. Valida las entradas y aplica autorización en la capa de datos.
+Nunca expongas una clave `secret` de Supabase —ni la clave heredada `service_role`— en código cliente. Usa la clave `publishable` para el cliente, variables de entorno para secretos y nunca incluyas valores reales en Git. Valida las entradas y aplica autorización en la capa de datos.
 
 ---
 
@@ -480,7 +480,9 @@ Ejecuta además los comandos de linting y comprobación de tipos existentes. Si 
 
 # Git y despliegue
 
-Usa Git durante el desarrollo. Prefiere cambios y commits pequeños con mensajes claros. No envíes cambios directamente a `main` sin autorización explícita; trabaja en una rama de funcionalidad.
+Usa Git durante el desarrollo, pero **no ejecutes `git add`, `git commit` ni `git push`** salvo que la propietaria lo solicite de forma explícita. Deja los cambios sin staging para que la propietaria los revise y cree el commit personalmente.
+
+Al finalizar cada unidad de trabajo, propone en el reporte final un mensaje de commit claro y pequeño, sin crear el commit. No envíes cambios directamente a `main` sin autorización explícita; trabaja en una rama de funcionalidad cuando se inicie una nueva funcionalidad.
 
 La plataforma de despliegue inicial y destino de SSR es **Vercel**. Configura Astro con el adaptador oficial de Vercel (`@astrojs/vercel`) cuando se inicialice el proyecto. Las rutas públicas que no requieran datos dinámicos deben aprovechar el prerenderizado; las rutas administrativas y acciones que requieran procesamiento seguro deben usar SSR.
 

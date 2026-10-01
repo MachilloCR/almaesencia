@@ -12,6 +12,8 @@
   "dependencies": {
     "@astrojs/react": "^7.0.0",
     "@astrojs/vercel": "^11.0.11",
+    "@supabase/ssr": "^0.12.7",
+    "@supabase/supabase-js": "^2.117.2",
     "astro": "^7.3.5",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",

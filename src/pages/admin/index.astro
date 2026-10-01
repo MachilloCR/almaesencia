@@ -1,0 +1,51 @@
+---
+import CatalogManager from "../../components/admin/CatalogManager";
+import BaseLayout from "../../layouts/BaseLayout.astro";
+import { getAdminCatalogData } from "../../services/admin-catalog";
+
+const { supabase, user } = Astro.locals;
+
+if (!user) {
+  return Astro.redirect("/admin/login");
+}
+
+const { data: profile } = await supabase
+  .from("profiles")
+  .select("role")
+  .eq("id", user.id)
+  .maybeSingle();
+
+if (profile?.role !== "admin") {
+  await supabase.auth.signOut();
+  return Astro.redirect("/admin/login?error=unauthorized");
+}
+
+const { categories, products } = await getAdminCatalogData(supabase);
+---
+
+<BaseLayout title="Panel administrativo | Alma Esencia CR">
+  <main class="mx-auto min-h-screen max-w-7xl px-4 py-12 sm:px-8">
+    <header class="flex flex-col gap-6 border-b border-border-subtle pb-8 sm:flex-row sm:items-end sm:justify-between">
+      <div>
+        <p class="text-xs font-semibold tracking-[0.14em] text-brand-primary uppercase">
+          Alma Esencia CR
+        </p>
+        <h1 class="mt-3 font-display text-3xl font-semibold text-text-primary sm:text-4xl">
+          Panel administrativo
+        </h1>
+        <p class="mt-3 text-sm leading-6 text-text-secondary">
+          Sesión activa para {user.email ?? "administración"}.
+        </p>
+      </div>
+      <form method="post" action="/api/admin/sign-out">
+        <button class="min-h-11 rounded-full border-[1.5px] border-brand-primary px-5 py-2 text-sm font-semibold text-brand-primary transition hover:bg-brand-primary-soft" type="submit">
+          Cerrar sesión
+        </button>
+      </form>
+    </header>
+
+    <div class="mt-10">
+      <CatalogManager client:load initialCategories={categories} initialProducts={products} />
+    </div>
+  </main>
+</BaseLayout>
