@@ -1,19 +1,28 @@
 ---
+import CartLink from "../components/catalog/CartLink";
+import CatalogProductGrid from "../components/catalog/CatalogProductGrid";
 import BaseLayout from "../layouts/BaseLayout.astro";
+import { getPublicCatalogData } from "../services/public-catalog";
+
+const { categories, products } = await getPublicCatalogData(Astro.locals.supabase);
 ---
 
-<BaseLayout>
-  <main class="mx-auto flex min-h-screen max-w-5xl items-center px-4 py-16 sm:px-8">
-    <section class="max-w-2xl">
-      <p class="mb-4 text-xs font-semibold tracking-[0.14em] text-brand-primary uppercase">
-        Catálogo artesanal · Costa Rica
-      </p>
-      <h1 class="font-display text-4xl leading-tight font-semibold text-text-primary sm:text-6xl">
-        Alma Esencia CR
-      </h1>
-      <p class="mt-6 max-w-xl text-base leading-7 text-text-secondary">
-        Estamos preparando un catálogo para descubrir piezas especiales y enviar solicitudes de pedido de manera personalizada.
-      </p>
+<BaseLayout title="Alma Esencia CR | Catálogo artesanal" description="Descubre joyería, productos Farmasi y velas personalizadas de Alma Esencia CR.">
+  <header class="border-b border-border-subtle bg-surface/95">
+    <nav class="mx-auto flex max-w-7xl items-center justify-between px-4 py-5 sm:px-8 lg:px-12" aria-label="Navegación principal">
+      <a class="font-display text-2xl font-semibold text-text-primary" href="/">Alma Esencia CR</a>
+      <CartLink client:load />
+    </nav>
+  </header>
+
+  <main>
+    <section class="mx-auto grid max-w-7xl gap-10 px-4 py-16 sm:px-8 lg:grid-cols-[1.15fr_0.85fr] lg:px-12 lg:py-24">
+      <div class="self-center"><p class="text-xs font-semibold tracking-[0.16em] text-brand-primary uppercase">Catálogo artesanal · Costa Rica</p><h1 class="mt-5 max-w-3xl font-display text-4xl leading-tight font-semibold text-text-primary sm:text-5xl lg:text-6xl">Piezas especiales, elegidas con intención.</h1><p class="mt-6 max-w-xl text-base leading-7 text-text-secondary">Explora joyería, productos Farmasi y velas personalizadas. Envía una solicitud y confirmaremos disponibilidad, detalles y entrega contigo.</p><a class="mt-8 inline-flex min-h-11 items-center rounded-full bg-brand-primary px-6 py-3 text-sm font-semibold text-white transition hover:bg-brand-primary-hover" href="#catalogo">Explorar productos</a></div>
+      <div class="relative min-h-72 rounded-[24px] border border-border-subtle bg-gradient-to-br from-surface-soft via-brand-primary-soft to-[#F8E7D5] p-7 shadow-[0_12px_28px_-4px_rgba(134,54,93,0.10)] sm:min-h-96"><div class="absolute inset-7 flex flex-col justify-end rounded-[16px] border border-white/70 bg-white/50 p-6 backdrop-blur-sm"><p class="text-xs font-semibold tracking-[0.14em] text-brand-primary uppercase">Alma Esencia CR</p><p class="mt-3 max-w-sm font-display text-2xl leading-snug text-text-primary">Una colección creada para regalar, celebrar y acompañar momentos cotidianos.</p></div></div>
     </section>
+
+    <section id="catalogo" class="border-t border-border-subtle bg-brand-primary-soft/40"><div class="mx-auto max-w-7xl px-4 py-14 sm:px-8 lg:px-12 lg:py-20"><div class="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between"><div><p class="text-xs font-semibold tracking-[0.16em] text-brand-primary uppercase">Catálogo</p><h2 class="mt-3 font-display text-3xl font-semibold text-text-primary">Encuentra algo para ti</h2></div><p class="text-sm leading-6 text-text-secondary">Los precios son estimados y confirmaremos los detalles antes de preparar tu pedido.</p></div>
+      {products.length === 0 ? <div class="mt-8 rounded-[20px] border border-dashed border-border-subtle bg-surface-card px-6 py-14 text-center"><h3 class="font-display text-2xl font-semibold text-text-primary">Estamos preparando el catálogo</h3><p class="mx-auto mt-3 max-w-md text-sm leading-6 text-text-secondary">Muy pronto encontrarás aquí nuestras piezas y productos disponibles.</p></div> : <div class="mt-8"><CatalogProductGrid client:load categories={categories} products={products} /></div>}
+    </div></section>
   </main>
 </BaseLayout>

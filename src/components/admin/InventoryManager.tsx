@@ -30,11 +30,15 @@ export default function InventoryManager({ initialInventory, products, categorie
   const [quantities, setQuantities] = useState<Record<string, string>>({});
   const [savingProductId, setSavingProductId] = useState<string | null>(null);
   const [productChanges, setProductChanges] = useState<Record<string, AdminProduct>>({});
+  const [categoryChanges, setCategoryChanges] = useState<Record<string, AdminCategory>>({});
   const productsById = useMemo(
     () => new Map(products.map((product) => [product.id, productChanges[product.id] ?? product])),
     [products, productChanges],
   );
-  const categoriesById = useMemo(() => new Map(categories.map((category) => [category.id, category])), [categories]);
+  const categoriesById = useMemo(
+    () => new Map(categories.map((category) => [category.id, categoryChanges[category.id] ?? category])),
+    [categories, categoryChanges],
+  );
 
   useEffect(() => {
     function handleProductChange(event: Event) {
@@ -47,8 +51,17 @@ export default function InventoryManager({ initialInventory, products, categorie
       );
     }
 
+    function handleCategoryChange(event: Event) {
+      const category = (event as CustomEvent<AdminCategory>).detail;
+      setCategoryChanges((current) => ({ ...current, [category.id]: category }));
+    }
+
     window.addEventListener("admin:product-changed", handleProductChange);
-    return () => window.removeEventListener("admin:product-changed", handleProductChange);
+    window.addEventListener("admin:category-changed", handleCategoryChange);
+    return () => {
+      window.removeEventListener("admin:product-changed", handleProductChange);
+      window.removeEventListener("admin:category-changed", handleCategoryChange);
+    };
   }, []);
 
   function replaceItem(item: AdminInventoryItem) {
@@ -125,7 +138,7 @@ export default function InventoryManager({ initialInventory, products, categorie
           El inventario aparecerá al crear productos.
         </div>
       ) : (
-        <ul className="mt-5 grid gap-4 md:grid-cols-2">
+        <ul className="mt-5 grid grid-cols-[repeat(auto-fill,minmax(17rem,17rem))] justify-start gap-4">
           {inventory.map((item) => {
             const product = productsById.get(item.product_id);
             const category = product ? categoriesById.get(product.category_id) : undefined;

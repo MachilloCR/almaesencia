@@ -76,6 +76,7 @@ export default function CatalogManager({ initialCategories, initialProducts }: P
         },
       );
       setCategories((current) => [...current, category].sort((a, b) => a.name.localeCompare(b.name)));
+      window.dispatchEvent(new CustomEvent<AdminCategory>("admin:category-changed", { detail: category }));
       setCategoryName("");
       setCategoryDescription("");
       if (!draft.categoryId) set("categoryId", category.id);
@@ -145,7 +146,7 @@ export default function CatalogManager({ initialCategories, initialProducts }: P
   return (
     <>
       <Toaster position="top-right" options={{ fill: "#FFFFFF", roundness: 16, duration: 4_000 }} />
-      <section className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
+      <section className="grid justify-start gap-6 xl:grid-cols-[minmax(0,52rem)_22.5rem]">
         <div className="rounded-[20px] border border-border-subtle bg-surface-card p-6 shadow-[0_4px_20px_-2px_rgba(134,54,93,0.05)] sm:p-8">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
@@ -209,7 +210,7 @@ export default function CatalogManager({ initialCategories, initialProducts }: P
       <section className="mt-10">
         <div className="flex items-end justify-between gap-4"><div><p className="text-xs font-semibold tracking-[0.14em] text-brand-primary uppercase">Catálogo interno</p><h2 className="mt-2 font-display text-2xl font-semibold">Productos registrados</h2></div><p className="text-sm text-text-secondary">{products.length} producto{products.length === 1 ? "" : "s"}</p></div>
         {products.length === 0 ? <div className="mt-5 rounded-[20px] border border-dashed border-border-subtle bg-surface-card px-6 py-12 text-center"><h3 className="font-display text-xl font-semibold">Tu catálogo está listo para comenzar</h3><p className="mt-3 text-sm leading-6 text-text-secondary">Agrega una categoría y luego registra tu primer producto.</p></div> :
-          <ul className="mt-5 grid gap-4 md:grid-cols-2">{products.map((product) => {
+          <ul className="mt-5 grid grid-cols-[repeat(auto-fill,minmax(17rem,17rem))] justify-start gap-4">{products.map((product) => {
             const category = categoryById.get(product.category_id);
             const visible = product.is_active && product.availability_status !== "inactive" && category?.is_active;
             return <li className="rounded-[20px] border border-border-subtle bg-surface-card p-5 shadow-[0_4px_20px_-2px_rgba(134,54,93,0.05)]" key={product.id}>
