@@ -20,5 +20,14 @@ export const productUpdateSchema = productInputSchema.extend({
   id: z.uuid(),
 });
 
+export const inventoryAdjustmentSchema = z.object({
+  productId: z.uuid(),
+  quantity: z.coerce.number().int().min(0).max(1_000_000),
+});
+
+export const markOutOfStockSchema = z.object({
+  productId: z.uuid(),
+});
+
 export type CategoryInput = z.infer<typeof categoryInputSchema>;
 export type ProductInput = z.infer<typeof productInputSchema>;
