@@ -22,11 +22,25 @@ export const POST: APIRoute = async (context) => {
     })),
   });
 
-  if (error || !data[0]) {
+  if (error) {
+    console.error("No fue posible crear la solicitud de pedido", {
+      code: error.code,
+      message: error.message,
+      details: error.details,
+    });
+
+    const message = error.message.includes("productos no disponibles")
+      ? "Uno o más productos de tu solicitud ya no están disponibles. Quítalos y vuelve a intentarlo."
+      : error.message || "No fue posible crear la solicitud. Intenta nuevamente en unos minutos.";
+
     return Response.json(
-      { error: "No fue posible crear la solicitud. Confirma que todos los productos sigan disponibles." },
+      { error: message },
       { status: 400, headers: responseHeaders },
     );
+  }
+
+  if (!data[0]) {
+    return Response.json({ error: "No recibimos la confirmación de tu solicitud. Intenta nuevamente." }, { status: 500, headers: responseHeaders });
   }
 
   return Response.json({ orderNumber: data[0].order_number }, { status: 201, headers: responseHeaders });

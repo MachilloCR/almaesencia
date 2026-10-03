@@ -1,6 +1,7 @@
 ---
 import CatalogManager from "../../components/admin/CatalogManager";
 import InventoryManager from "../../components/admin/InventoryManager";
+import OrderManager from "../../components/admin/OrderManager";
 import BaseLayout from "../../layouts/BaseLayout.astro";
 import { getAdminCatalogData, getAdminInventoryData } from "../../services/admin-catalog";
 
@@ -21,10 +22,13 @@ if (profile?.role !== "admin") {
   return Astro.redirect("/admin/login?error=unauthorized");
 }
 
-const [{ categories, products }, inventory] = await Promise.all([
+const [{ categories, products }, inventory, ordersResult] = await Promise.all([
   getAdminCatalogData(supabase),
   getAdminInventoryData(supabase),
+  supabase.from("orders").select("id, order_number, customer_name, customer_phone, estimated_total, currency, order_status, procurement_status, fulfillment_status, payment_status, created_at").order("created_at", { ascending: false }),
 ]);
+
+const orders = ordersResult.data ?? [];
 ---
 
 <BaseLayout title="Panel administrativo | Alma Esencia CR">
@@ -51,6 +55,7 @@ const [{ categories, products }, inventory] = await Promise.all([
     <div class="mt-10">
       <CatalogManager client:load initialCategories={categories} initialProducts={products} />
       <InventoryManager client:load initialInventory={inventory} products={products} categories={categories} />
+      <OrderManager client:load initialOrders={orders} />
     </div>
   </main>
 </BaseLayout>
