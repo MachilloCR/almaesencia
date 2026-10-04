@@ -20,10 +20,10 @@ const labels: Record<ProductAvailabilityStatus, string> = {
   inactive: "Inactivo",
 };
 const badgeStyles: Record<ProductAvailabilityStatus, string> = {
-  in_stock: "border-[#C8E6C9] bg-[#E8F5E9] text-[#2D6A4F]",
-  on_order: "border-[#FDE68A] bg-[#FEF3C7] text-[#8A5A12]",
-  out_of_stock: "border-[#E2D9DD] bg-[#F0ECEE] text-[#6B5E65]",
-  inactive: "border-[#E2D9DD] bg-[#F0ECEE] text-[#6B5E65]",
+  in_stock: "border-[#74C69D] bg-[#B7E4C7] text-[#1B4332]",
+  on_order: "border-[#F59E0B] bg-[#FCD34D] text-[#78350F]",
+  out_of_stock: "border-[#F87171] bg-[#FECACA] text-[#991B1B]",
+  inactive: "border-[#A99AA1] bg-[#D6CDD1] text-[#493B42]",
 };
 
 function blankDraft(categoryId = ""): Draft {
@@ -50,11 +50,28 @@ export default function CatalogManager({ initialCategories, initialProducts }: P
   const [products, setProducts] = useState(initialProducts);
   const [categoryName, setCategoryName] = useState("");
   const [categoryDescription, setCategoryDescription] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState("all");
+  const [availabilityFilter, setAvailabilityFilter] = useState("all");
+  const [visibilityFilter, setVisibilityFilter] = useState("all");
   const [draft, setDraft] = useState<Draft>(() => blankDraft(initialCategories.find((item) => item.is_active)?.id));
   const [editingId, setEditingId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const categoryById = useMemo(() => new Map(categories.map((category) => [category.id, category])), [categories]);
   const activeCategories = categories.filter((category) => category.is_active);
+  const normalizedQuery = searchQuery.trim().toLocaleLowerCase("es");
+  const filteredProducts = products.filter((product) => {
+    const category = categoryById.get(product.category_id);
+    const matchesQuery = !normalizedQuery || `${product.name} ${product.description ?? ""} ${category?.name ?? ""}`
+      .toLocaleLowerCase("es")
+      .includes(normalizedQuery);
+    const matchesCategory = categoryFilter === "all" || product.category_id === categoryFilter;
+    const matchesAvailability = availabilityFilter === "all" || product.availability_status === availabilityFilter;
+    const isVisible = product.is_active && product.availability_status !== "inactive" && category?.is_active;
+    const matchesVisibility = visibilityFilter === "all" || (visibilityFilter === "visible" ? isVisible : !isVisible);
+    return matchesQuery && matchesCategory && matchesAvailability && matchesVisibility;
+  });
+  const hasFilters = Boolean(searchQuery || categoryFilter !== "all" || availabilityFilter !== "all" || visibilityFilter !== "all");
 
   const set = <Key extends keyof Draft>(key: Key, value: Draft[Key]) =>
     setDraft((current) => ({ ...current, [key]: value }));
@@ -208,13 +225,47 @@ export default function CatalogManager({ initialCategories, initialProducts }: P
       </section>
 
       <section className="mt-10">
-        <div className="flex items-end justify-between gap-4"><div><p className="text-xs font-semibold tracking-[0.14em] text-brand-primary uppercase">Catálogo interno</p><h2 className="mt-2 font-display text-2xl font-semibold">Productos registrados</h2></div><p className="text-sm text-text-secondary">{products.length} producto{products.length === 1 ? "" : "s"}</p></div>
+        <div className="flex flex-wrap items-end justify-between gap-4"><div><p className="text-xs font-semibold tracking-[0.14em] text-brand-primary uppercase">Catálogo interno</p><h2 className="mt-2 font-display text-2xl font-semibold">Productos registrados</h2></div><p className="text-sm text-text-secondary">Mostrando {filteredProducts.length} de {products.length} producto{products.length === 1 ? "" : "s"}</p></div>
+        <div className="mt-5 grid gap-3 rounded-[16px] border border-border-subtle bg-surface-card p-4 sm:grid-cols-2 xl:grid-cols-[minmax(14rem,1.5fr)_repeat(3,minmax(10rem,1fr))]">
+          <label className="text-xs font-semibold text-text-secondary">Buscar producto
+            <input className="mt-2 min-h-11 w-full rounded-lg border border-border-subtle bg-white px-3 text-sm font-normal text-text-primary outline-none placeholder:text-text-secondary/70 focus:border-brand-primary focus:ring-3 focus:ring-brand-primary/12" type="search" placeholder="Nombre, descripción o categoría" value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} />
+          </label>
+          <label className="text-xs font-semibold text-text-secondary">Categoría
+            <select className="mt-2 min-h-11 w-full rounded-lg border border-border-subtle bg-white px-3 text-sm font-normal text-text-primary outline-none focus:border-brand-primary focus:ring-3 focus:ring-brand-primary/12" value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value)}>
+              <option value="all">Todas</option>
+              {categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
+            </select>
+          </label>
+          <label className="text-xs font-semibold text-text-secondary">Disponibilidad
+            <select className="mt-2 min-h-11 w-full rounded-lg border border-border-subtle bg-white px-3 text-sm font-normal text-text-primary outline-none focus:border-brand-primary focus:ring-3 focus:ring-brand-primary/12" value={availabilityFilter} onChange={(event) => setAvailabilityFilter(event.target.value)}>
+              <option value="all">Todas</option>
+              {Object.entries(labels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+            </select>
+          </label>
+          <label className="text-xs font-semibold text-text-secondary">Visibilidad
+            <select className="mt-2 min-h-11 w-full rounded-lg border border-border-subtle bg-white px-3 text-sm font-normal text-text-primary outline-none focus:border-brand-primary focus:ring-3 focus:ring-brand-primary/12" value={visibilityFilter} onChange={(event) => setVisibilityFilter(event.target.value)}>
+              <option value="all">Todos</option>
+              <option value="visible">Visible en catálogo</option>
+              <option value="hidden">No visible</option>
+            </select>
+          </label>
+        </div>
         {products.length === 0 ? <div className="mt-5 rounded-[20px] border border-dashed border-border-subtle bg-surface-card px-6 py-12 text-center"><h3 className="font-display text-xl font-semibold">Tu catálogo está listo para comenzar</h3><p className="mt-3 text-sm leading-6 text-text-secondary">Agrega una categoría y luego registra tu primer producto.</p></div> :
-          <ul className="mt-5 grid grid-cols-[repeat(auto-fill,minmax(17rem,17rem))] justify-start gap-4">{products.map((product) => {
+          filteredProducts.length === 0 ? <div className="mt-5 rounded-[20px] border border-dashed border-border-subtle bg-surface-card px-6 py-10 text-center"><h3 className="font-display text-xl font-semibold">No encontramos productos con esos filtros</h3><p className="mt-2 text-sm text-text-secondary">Prueba otro nombre o cambia las opciones seleccionadas.</p>{hasFilters && <button className="mt-4 min-h-11 rounded-full px-4 text-sm font-semibold text-brand-primary hover:bg-brand-primary-soft" type="button" onClick={() => { setSearchQuery(""); setCategoryFilter("all"); setAvailabilityFilter("all"); setVisibilityFilter("all"); }}>Limpiar filtros</button>}</div> :
+          <ul className="mt-5 grid grid-cols-[repeat(auto-fill,minmax(17rem,17rem))] justify-start gap-4">{filteredProducts.map((product) => {
             const category = categoryById.get(product.category_id);
             const visible = product.is_active && product.availability_status !== "inactive" && category?.is_active;
-            return <li className="rounded-[20px] border border-border-subtle bg-surface-card p-5 shadow-[0_4px_20px_-2px_rgba(134,54,93,0.05)]" key={product.id}>
-              <div className="flex items-start justify-between gap-3"><div><p className="text-xs font-semibold tracking-[0.12em] text-text-secondary uppercase">{category?.name ?? "Categoría eliminada"}</p><h3 className="mt-2 font-display text-xl font-medium">{product.name}</h3></div><span className={`rounded-full border px-3 py-1 text-xs font-semibold ${badgeStyles[product.availability_status]}`}>{labels[product.availability_status]}</span></div>
+            return <li className="relative rounded-[20px] border border-border-subtle bg-surface-card p-5 shadow-[0_4px_20px_-2px_rgba(134,54,93,0.05)]" key={product.id}>
+              <p className="max-w-[60%] text-xs font-semibold tracking-[0.12em] text-text-secondary uppercase">{category?.name ?? "Categoría eliminada"}</p>
+              <span className={`absolute right-5 top-5 inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-semibold ${badgeStyles[product.availability_status]}`}>
+                <svg aria-hidden="true" className="size-3.5 shrink-0" fill="none" viewBox="0 0 16 16" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+                  {product.availability_status === "in_stock" && <path d="m3.5 8 3 3 6-6" />}
+                  {product.availability_status === "on_order" && <><circle cx="8" cy="8" r="5.5" /><path d="M8 4.5V8l2.25 1.5" /></>}
+                  {(product.availability_status === "out_of_stock" || product.availability_status === "inactive") && <><circle cx="8" cy="8" r="5.5" /><path d="m4.1 4.1 7.8 7.8" /></>}
+                </svg>
+                {labels[product.availability_status]}
+              </span>
+              <h3 className="mt-2 font-display text-xl font-medium">{product.name}</h3>
               <p className="mt-4 text-lg font-semibold">{price(Number(product.price), product.currency)}</p>
               {product.description && <p className="mt-2 text-sm leading-6 text-text-secondary">{product.description}</p>}
               <p className="mt-4 text-xs text-text-secondary">{visible ? "Visible en el catálogo" : "No visible en el catálogo"}</p>

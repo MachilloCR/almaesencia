@@ -10,6 +10,22 @@ type Props = {
 
 type ApiResponse = { item: AdminInventoryItem; availabilityStatus?: "out_of_stock" };
 
+type InventoryDisplayStatus = AdminProduct["availability_status"];
+
+const availabilityLabels: Record<InventoryDisplayStatus, string> = {
+  in_stock: "Disponible",
+  on_order: "Por encargo",
+  out_of_stock: "Agotado",
+  inactive: "Inactivo",
+};
+
+const availabilityStyles: Record<InventoryDisplayStatus, string> = {
+  in_stock: "border-[#74C69D] bg-[#B7E4C7] text-[#1B4332]",
+  on_order: "border-[#F59E0B] bg-[#FCD34D] text-[#78350F]",
+  out_of_stock: "border-[#F87171] bg-[#FECACA] text-[#991B1B]",
+  inactive: "border-[#A99AA1] bg-[#D6CDD1] text-[#493B42]",
+};
+
 async function updateInventory(body: unknown) {
   const response = await fetch("/api/admin/inventory", {
     method: "PATCH",
@@ -27,6 +43,10 @@ async function updateInventory(body: unknown) {
 
 export default function InventoryManager({ initialInventory, products, categories }: Props) {
   const [inventory, setInventory] = useState(initialInventory);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState("all");
+  const [availabilityFilter, setAvailabilityFilter] = useState("all");
+  const [stockFilter, setStockFilter] = useState("all");
   const [quantities, setQuantities] = useState<Record<string, string>>({});
   const [savingProductId, setSavingProductId] = useState<string | null>(null);
   const [productChanges, setProductChanges] = useState<Record<string, AdminProduct>>({});
@@ -39,6 +59,19 @@ export default function InventoryManager({ initialInventory, products, categorie
     () => new Map(categories.map((category) => [category.id, categoryChanges[category.id] ?? category])),
     [categories, categoryChanges],
   );
+  const normalizedQuery = searchQuery.trim().toLocaleLowerCase("es");
+  const filteredInventory = inventory.filter((item) => {
+    const product = productsById.get(item.product_id);
+    const category = product ? categoriesById.get(product.category_id) : undefined;
+    const matchesQuery = !normalizedQuery || `${product?.name ?? ""} ${category?.name ?? ""}`
+      .toLocaleLowerCase("es")
+      .includes(normalizedQuery);
+    const matchesCategory = categoryFilter === "all" || product?.category_id === categoryFilter;
+    const matchesAvailability = availabilityFilter === "all" || product?.availability_status === availabilityFilter;
+    const matchesStock = stockFilter === "all" || (stockFilter === "available" ? item.quantity > 0 : item.quantity === 0);
+    return matchesQuery && matchesCategory && matchesAvailability && matchesStock;
+  });
+  const hasFilters = Boolean(searchQuery || categoryFilter !== "all" || availabilityFilter !== "all" || stockFilter !== "all");
 
   useEffect(() => {
     function handleProductChange(event: Event) {
@@ -130,30 +163,70 @@ export default function InventoryManager({ initialInventory, products, categorie
           <h2 className="mt-2 font-display text-2xl font-semibold text-text-primary">Existencias actuales</h2>
           <p className="mt-2 text-sm leading-6 text-text-secondary">Ajusta la cantidad física sin modificar solicitudes de pedido.</p>
         </div>
-        <p className="text-sm text-text-secondary">{inventory.length} registro{inventory.length === 1 ? "" : "s"}</p>
+        <p className="text-sm text-text-secondary">Mostrando {filteredInventory.length} de {inventory.length} producto{inventory.length === 1 ? "" : "s"}</p>
+      </div>
+
+      <div className="mt-5 grid gap-3 rounded-[16px] border border-border-subtle bg-surface-card p-4 sm:grid-cols-2 xl:grid-cols-[minmax(14rem,1.5fr)_repeat(3,minmax(10rem,1fr))]">
+        <label className="text-xs font-semibold text-text-secondary">Buscar producto
+          <input className="mt-2 min-h-11 w-full rounded-lg border border-border-subtle bg-white px-3 text-sm font-normal text-text-primary outline-none placeholder:text-text-secondary/70 focus:border-brand-primary focus:ring-3 focus:ring-brand-primary/12" type="search" placeholder="Nombre o categoría" value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} />
+        </label>
+        <label className="text-xs font-semibold text-text-secondary">Categoría
+          <select className="mt-2 min-h-11 w-full rounded-lg border border-border-subtle bg-white px-3 text-sm font-normal text-text-primary outline-none focus:border-brand-primary focus:ring-3 focus:ring-brand-primary/12" value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value)}>
+            <option value="all">Todas</option>
+            {categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
+          </select>
+        </label>
+        <label className="text-xs font-semibold text-text-secondary">Disponibilidad
+          <select className="mt-2 min-h-11 w-full rounded-lg border border-border-subtle bg-white px-3 text-sm font-normal text-text-primary outline-none focus:border-brand-primary focus:ring-3 focus:ring-brand-primary/12" value={availabilityFilter} onChange={(event) => setAvailabilityFilter(event.target.value)}>
+            <option value="all">Todas</option>
+            <option value="in_stock">Disponible</option>
+            <option value="on_order">Por encargo</option>
+            <option value="out_of_stock">Agotado</option>
+            <option value="inactive">Inactivo</option>
+          </select>
+        </label>
+        <label className="text-xs font-semibold text-text-secondary">Existencias
+          <select className="mt-2 min-h-11 w-full rounded-lg border border-border-subtle bg-white px-3 text-sm font-normal text-text-primary outline-none focus:border-brand-primary focus:ring-3 focus:ring-brand-primary/12" value={stockFilter} onChange={(event) => setStockFilter(event.target.value)}>
+            <option value="all">Todas</option>
+            <option value="available">Con unidades</option>
+            <option value="empty">Sin unidades</option>
+          </select>
+        </label>
       </div>
 
       {inventory.length === 0 ? (
         <div className="mt-5 rounded-[20px] border border-dashed border-border-subtle bg-surface-card px-6 py-10 text-center text-sm text-text-secondary">
           El inventario aparecerá al crear productos.
         </div>
+      ) : filteredInventory.length === 0 ? (
+        <div className="mt-5 rounded-[20px] border border-dashed border-border-subtle bg-surface-card px-6 py-10 text-center">
+          <h3 className="font-display text-xl font-semibold text-text-primary">No encontramos productos con esos filtros</h3>
+          <p className="mt-2 text-sm text-text-secondary">Prueba con otro nombre o ajusta las opciones seleccionadas.</p>
+          {hasFilters && <button className="mt-4 min-h-11 rounded-full px-4 text-sm font-semibold text-brand-primary hover:bg-brand-primary-soft" type="button" onClick={() => { setSearchQuery(""); setCategoryFilter("all"); setAvailabilityFilter("all"); setStockFilter("all"); }}>Limpiar filtros</button>}
+        </div>
       ) : (
         <ul className="mt-5 grid grid-cols-[repeat(auto-fill,minmax(17rem,17rem))] justify-start gap-4">
-          {inventory.map((item) => {
+          {filteredInventory.map((item) => {
             const product = productsById.get(item.product_id);
             const category = product ? categoriesById.get(product.category_id) : undefined;
             const isSaving = savingProductId === item.product_id;
             const visibleQuantity = quantities[item.product_id] ?? String(item.quantity);
+            const availabilityStatus: InventoryDisplayStatus = !product || !product.is_active
+              ? "inactive"
+              : product.availability_status;
 
             return (
-              <li className="rounded-[20px] border border-border-subtle bg-surface-card p-5 shadow-[0_4px_20px_-2px_rgba(134,54,93,0.05)]" key={item.product_id}>
-                <p className="text-xs font-semibold tracking-[0.12em] text-text-secondary uppercase">{category?.name ?? "Sin categoría"}</p>
-                <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
-                  <h3 className="font-display text-xl font-medium text-text-primary">{product?.name ?? "Producto no disponible"}</h3>
-                  <span className="rounded-full bg-brand-primary-soft px-3 py-1 text-xs font-semibold text-brand-primary">
-                    {product?.availability_status === "on_order" ? "Por encargo" : product?.availability_status === "out_of_stock" ? "Agotado" : "Disponible"}
-                  </span>
-                </div>
+              <li className="relative rounded-[20px] border border-border-subtle bg-surface-card p-5 shadow-[0_4px_20px_-2px_rgba(134,54,93,0.05)]" key={item.product_id}>
+                <p className="max-w-[60%] text-xs font-semibold tracking-[0.12em] text-text-secondary uppercase">{category?.name ?? "Sin categoría"}</p>
+                <span className={`absolute right-5 top-5 inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-semibold ${availabilityStyles[availabilityStatus]}`}>
+                  <svg aria-hidden="true" className="size-3.5 shrink-0" fill="none" viewBox="0 0 16 16" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+                    {availabilityStatus === "in_stock" && <path d="m3.5 8 3 3 6-6" />}
+                    {availabilityStatus === "on_order" && <><circle cx="8" cy="8" r="5.5" /><path d="M8 4.5V8l2.25 1.5" /></>}
+                    {(availabilityStatus === "out_of_stock" || availabilityStatus === "inactive") && <><circle cx="8" cy="8" r="5.5" /><path d="m4.1 4.1 7.8 7.8" /></>}
+                  </svg>
+                  {availabilityLabels[availabilityStatus]}
+                </span>
+                <h3 className="mt-2 font-display text-xl font-medium text-text-primary">{product?.name ?? "Producto no disponible"}</h3>
                 <label className="mt-5 block text-sm font-semibold text-text-primary">
                   Unidades físicas
                   <input

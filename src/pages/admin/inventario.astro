@@ -1,8 +1,8 @@
 ---
-import CatalogManager from "../../components/admin/CatalogManager";
 import AdminSidebar from "../../components/admin/AdminSidebar.astro";
+import InventoryManager from "../../components/admin/InventoryManager";
 import BaseLayout from "../../layouts/BaseLayout.astro";
-import { getAdminCatalogData } from "../../services/admin-catalog";
+import { getAdminCatalogData, getAdminInventoryData } from "../../services/admin-catalog";
 
 const { supabase, user } = Astro.locals;
 if (!user) return Astro.redirect("/admin/login");
@@ -11,20 +11,24 @@ if (profile?.role !== "admin") {
   await supabase.auth.signOut();
   return Astro.redirect("/admin/login?error=unauthorized");
 }
-const { categories, products } = await getAdminCatalogData(supabase);
+
+const [{ categories, products }, inventory] = await Promise.all([
+  getAdminCatalogData(supabase),
+  getAdminInventoryData(supabase),
+]);
 ---
 
-<BaseLayout title="Catálogo | Alma Esencia CR">
+<BaseLayout title="Inventario | Alma Esencia CR">
   <div class="min-h-screen lg:grid lg:grid-cols-[15rem_minmax(0,1fr)]">
-    <AdminSidebar active="catalog" />
+    <AdminSidebar active="inventory" />
     <main class="min-w-0 px-4 py-10 sm:px-8 lg:px-10 xl:px-14">
       <header class="border-b border-border-subtle pb-7">
         <p class="text-xs font-semibold tracking-[0.14em] text-brand-primary uppercase">Alma Esencia CR</p>
-        <h1 class="mt-3 font-display text-3xl font-semibold text-text-primary sm:text-4xl">Catálogo</h1>
-        <p class="mt-2 text-sm leading-6 text-text-secondary">Administra productos y categorías.</p>
+        <h1 class="mt-3 font-display text-3xl font-semibold text-text-primary sm:text-4xl">Inventario</h1>
+        <p class="mt-2 text-sm leading-6 text-text-secondary">Consulta y ajusta las existencias físicas de tus productos.</p>
       </header>
       <div class="mt-10">
-        <CatalogManager client:load initialCategories={categories} initialProducts={products} />
+        <InventoryManager client:load initialInventory={inventory} products={products} categories={categories} />
       </div>
     </main>
   </div>
