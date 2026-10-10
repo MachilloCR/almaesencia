@@ -16,7 +16,7 @@ const linkClass = (isActive: boolean) =>
       <img class="h-10 w-auto object-contain lg:h-16" src="/logo-almaesencia.png" alt="Alma Esencia CR" />
     </a>
     <p class="mt-1 hidden text-xs font-semibold tracking-[0.14em] text-brand-primary uppercase lg:block">Administración</p>
-    <nav class="mt-4 flex gap-2 overflow-x-auto lg:flex-col" aria-label="Navegación administrativa">
+    <nav class="mt-4 flex gap-2 overflow-x-auto scrollbar-none lg:flex-col" aria-label="Navegación administrativa">
       <a
         class={`inline-flex min-h-11 shrink-0 items-center rounded-xl px-4 text-sm font-semibold transition ${linkClass(active === "orders")}`}
         href="/admin"

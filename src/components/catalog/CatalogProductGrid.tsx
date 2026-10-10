@@ -57,7 +57,7 @@ export default function CatalogProductGrid({ categories, products }: Props) {
         </div>
         <div className="mt-5">
           <p className="text-xs font-semibold text-text-secondary">Categoría</p>
-          <div className="mt-2 flex gap-2 overflow-x-auto pb-1" role="group" aria-label="Filtrar por categoría">
+          <div className="mt-2 flex gap-2 overflow-x-auto scrollbar-none pb-1" role="group" aria-label="Filtrar por categoría">
             <button className={`min-h-10 shrink-0 rounded-full px-4 text-sm font-semibold transition ${categoryFilter === "all" ? "bg-brand-primary text-white" : "bg-brand-primary-soft text-text-secondary hover:text-brand-primary"}`} type="button" aria-pressed={categoryFilter === "all"} onClick={() => setCategoryFilter("all")}>Todas</button>
             {categories.map((category) => <button className={`min-h-10 shrink-0 rounded-full px-4 text-sm font-semibold transition ${categoryFilter === category.id ? "bg-brand-primary text-white" : "bg-brand-primary-soft text-text-secondary hover:text-brand-primary"}`} key={category.id} type="button" aria-pressed={categoryFilter === category.id} onClick={() => setCategoryFilter(category.id)}>{category.name}</button>)}
           </div>
