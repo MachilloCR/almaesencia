@@ -62,11 +62,11 @@ export default function InventoryManager({ initialInventory, products, categorie
   const normalizedQuery = searchQuery.trim().toLocaleLowerCase("es");
   const filteredInventory = inventory.filter((item) => {
     const product = productsById.get(item.product_id);
-    const category = product ? categoriesById.get(product.category_id) : undefined;
-    const matchesQuery = !normalizedQuery || `${product?.name ?? ""} ${category?.name ?? ""}`
+    const productCategories = product?.categoryIds.map((id) => categoriesById.get(id)).filter((category) => category !== undefined) ?? [];
+    const matchesQuery = !normalizedQuery || `${product?.name ?? ""} ${productCategories.map((category) => category.name).join(" ")}`
       .toLocaleLowerCase("es")
       .includes(normalizedQuery);
-    const matchesCategory = categoryFilter === "all" || product?.category_id === categoryFilter;
+    const matchesCategory = categoryFilter === "all" || product?.categoryIds.includes(categoryFilter);
     const matchesAvailability = availabilityFilter === "all" || product?.availability_status === availabilityFilter;
     const matchesStock = stockFilter === "all" || (stockFilter === "available" ? item.quantity > 0 : item.quantity === 0);
     return matchesQuery && matchesCategory && matchesAvailability && matchesStock;
@@ -208,7 +208,7 @@ export default function InventoryManager({ initialInventory, products, categorie
         <ul className="mt-5 grid grid-cols-[repeat(auto-fill,minmax(17rem,17rem))] justify-start gap-4">
           {filteredInventory.map((item) => {
             const product = productsById.get(item.product_id);
-            const category = product ? categoriesById.get(product.category_id) : undefined;
+            const categoryNames = product?.categoryIds.map((id) => categoriesById.get(id)?.name).filter((name): name is string => Boolean(name)) ?? [];
             const isSaving = savingProductId === item.product_id;
             const visibleQuantity = quantities[item.product_id] ?? String(item.quantity);
             const availabilityStatus: InventoryDisplayStatus = !product || !product.is_active
@@ -217,7 +217,7 @@ export default function InventoryManager({ initialInventory, products, categorie
 
             return (
               <li className="relative rounded-[20px] border border-border-subtle bg-surface-card p-5 shadow-[0_4px_20px_-2px_rgba(134,54,93,0.05)]" key={item.product_id}>
-                <p className="max-w-[60%] text-xs font-semibold tracking-[0.12em] text-text-secondary uppercase">{category?.name ?? "Sin categoría"}</p>
+                <p className="max-w-[60%] text-xs font-semibold tracking-[0.12em] text-text-secondary uppercase">{categoryNames.join(" · ") || "Sin categoría"}</p>
                 <span className={`absolute right-5 top-5 inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-semibold ${availabilityStyles[availabilityStatus]}`}>
                   <svg aria-hidden="true" className="size-3.5 shrink-0" fill="none" viewBox="0 0 16 16" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
                     {availabilityStatus === "in_stock" && <path d="m3.5 8 3 3 6-6" />}

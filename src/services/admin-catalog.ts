@@ -18,7 +18,7 @@ export type AdminProduct = Pick<
   | "currency"
   | "availability_status"
   | "is_active"
-> & { image: AdminProductImage | null };
+> & { categoryIds: string[]; image: AdminProductImage | null };
 export type AdminProductImage = { storagePath: string; altText: string; url: string | null };
 export type AdminInventoryItem = Pick<InventoryRow, "product_id" | "quantity" | "updated_at">;
 
@@ -102,6 +102,16 @@ export async function getAdminCatalogData(supabase: AdminSupabaseClient) {
   }
 
   const products = productsResult.data;
+  const associationsResult = products.length
+    ? await supabase.from("product_categories").select("product_id, category_id").in("product_id", products.map((product) => product.id))
+    : { data: [], error: null };
+  if (associationsResult.error) throw new Error("No fue posible cargar las categorías de los productos.");
+  const categoryIdsByProduct = new Map<string, string[]>();
+  for (const association of associationsResult.data) {
+    const ids = categoryIdsByProduct.get(association.product_id) ?? [];
+    ids.push(association.category_id);
+    categoryIdsByProduct.set(association.product_id, ids);
+  }
   const imagesResult = products.length
     ? await supabase.from("product_images").select("product_id, storage_path, alt_text, sort_order").in("product_id", products.map((product) => product.id)).order("sort_order")
     : { data: [], error: null };
@@ -115,7 +125,11 @@ export async function getAdminCatalogData(supabase: AdminSupabaseClient) {
 
   return {
     categories: categoriesResult.data as AdminCategory[],
-    products: products.map((product) => ({ ...product, image: imageByProduct.get(product.id) ?? null })) as AdminProduct[],
+    products: products.map((product) => ({
+      ...product,
+      categoryIds: [product.category_id, ...(categoryIdsByProduct.get(product.id) ?? []).filter((id) => id !== product.category_id)],
+      image: imageByProduct.get(product.id) ?? null,
+    })) as AdminProduct[],
   };
 }
 
@@ -168,13 +182,22 @@ export async function unlinkProductImage(supabase: AdminSupabaseClient, productI
 }
 
 export async function createCategory(supabase: AdminSupabaseClient, input: CategoryInput) {
-  const slug = await createUniqueSlug(supabase, "categories", input.name);
+  const normalizedName = input.name.trim().replace(/\s+/g, " ");
+  const { data: existingCategories, error: existingError } = await supabase.from("categories").select("id, name");
+  if (existingError) throw new Error("No fue posible validar el nombre de la categoría.");
+  const canonicalName = normalizedName.toLocaleLowerCase("es");
+  if (existingCategories.some((category) => category.name.trim().replace(/\s+/g, " ").toLocaleLowerCase("es") === canonicalName)) {
+    throw new CategoryAlreadyExistsError();
+  }
+
+  const slug = await createUniqueSlug(supabase, "categories", normalizedName);
   const { data, error } = await supabase
     .from("categories")
-    .insert({ ...input, slug })
+    .insert({ ...input, name: normalizedName, slug })
     .select("id, name, slug, description, is_active")
     .single();
 
+  if (error?.code === "23505") throw new CategoryAlreadyExistsError();
   if (error) {
     throw new Error("No fue posible crear la categoría.");
   }
@@ -182,27 +205,31 @@ export async function createCategory(supabase: AdminSupabaseClient, input: Categ
   return data as AdminCategory;
 }
 
+export class CategoryAlreadyExistsError extends Error {
+  constructor() {
+    super("Ya existe una categoría con ese nombre.");
+    this.name = "CategoryAlreadyExistsError";
+  }
+}
+
 export async function createProduct(supabase: AdminSupabaseClient, input: ProductInput) {
   const slug = await createUniqueSlug(supabase, "products", input.name);
-  const { data, error } = await supabase
-    .from("products")
-    .insert({
-      category_id: input.categoryId,
-      name: input.name,
-      slug,
-      description: input.description,
-      price: input.price,
-      availability_status: input.availabilityStatus,
-      is_active: input.isActive,
-    })
-    .select("id, category_id, name, slug, description, price, currency, availability_status, is_active")
-    .single();
+  const { data, error } = await supabase.rpc("save_admin_product", {
+    p_product_id: null,
+    p_category_ids: input.categoryIds,
+    p_name: input.name,
+    p_slug: slug,
+    p_description: input.description,
+    p_price: input.price,
+    p_availability_status: input.availabilityStatus,
+    p_is_active: input.isActive,
+  });
 
-  if (error) {
+  if (error || !data?.[0]) {
     throw new Error("No fue posible crear el producto.");
   }
 
-  return { ...data, image: null } as AdminProduct;
+  return { ...data[0], categoryIds: input.categoryIds, image: null } as AdminProduct;
 }
 
 export async function updateProduct(
@@ -210,25 +237,22 @@ export async function updateProduct(
   id: string,
   input: ProductInput,
 ) {
-  const { data, error } = await supabase
-    .from("products")
-    .update({
-      category_id: input.categoryId,
-      name: input.name,
-      description: input.description,
-      price: input.price,
-      availability_status: input.availabilityStatus,
-      is_active: input.isActive,
-    })
-    .eq("id", id)
-    .select("id, category_id, name, slug, description, price, currency, availability_status, is_active")
-    .single();
+  const { data, error } = await supabase.rpc("save_admin_product", {
+    p_product_id: id,
+    p_category_ids: input.categoryIds,
+    p_name: input.name,
+    p_slug: "",
+    p_description: input.description,
+    p_price: input.price,
+    p_availability_status: input.availabilityStatus,
+    p_is_active: input.isActive,
+  });
 
-  if (error) {
+  if (error || !data?.[0]) {
     throw new Error("No fue posible actualizar el producto.");
   }
 
-  return { ...data, image: await getAdminProductImage(supabase, id) } as AdminProduct;
+  return { ...data[0], categoryIds: input.categoryIds, image: await getAdminProductImage(supabase, id) } as AdminProduct;
 }
 
 async function getAdminProductImage(supabase: AdminSupabaseClient, productId: string): Promise<AdminProductImage | null> {

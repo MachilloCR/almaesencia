@@ -1,12 +1,13 @@
-import { type SubmitEvent, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Toaster, sileo } from "sileo";
 import { optimizeProductImage, ProductImageProcessingError } from "../../lib/images/optimize-product-image";
+import CategoryMultiSelect from "./CategoryMultiSelect";
 import type { AdminCategory, AdminProduct } from "../../services/admin-catalog";
 import type { ProductAvailabilityStatus } from "../../types/database";
 
 type Props = { initialCategories: AdminCategory[]; initialProducts: AdminProduct[] };
 type Draft = {
-  categoryId: string;
+  categoryIds: string[];
   name: string;
   description: string;
   price: string;
@@ -20,6 +21,7 @@ const labels: Record<ProductAvailabilityStatus, string> = {
   out_of_stock: "Agotado",
   inactive: "Inactivo",
 };
+const availabilityOptions: ProductAvailabilityStatus[] = ["in_stock", "on_order", "out_of_stock", "inactive"];
 const badgeStyles: Record<ProductAvailabilityStatus, string> = {
   in_stock: "border-[#74C69D] bg-[#B7E4C7] text-[#1B4332]",
   on_order: "border-[#F59E0B] bg-[#FCD34D] text-[#78350F]",
@@ -27,8 +29,12 @@ const badgeStyles: Record<ProductAvailabilityStatus, string> = {
   inactive: "border-[#A99AA1] bg-[#D6CDD1] text-[#493B42]",
 };
 
-function blankDraft(categoryId = ""): Draft {
-  return { categoryId, name: "", description: "", price: "", availabilityStatus: "in_stock", isActive: true };
+function blankDraft(categoryIds: string[] = []): Draft {
+  return { categoryIds, name: "", description: "", price: "", availabilityStatus: "in_stock", isActive: true };
+}
+
+function normalizeCategoryName(value: string) {
+  return value.trim().replace(/\s+/g, " ").toLocaleLowerCase("es");
 }
 
 async function api<T>(url: string, method: "POST" | "PATCH", body: unknown): Promise<T> {
@@ -49,30 +55,32 @@ function price(value: number, currency: string) {
 export default function CatalogManager({ initialCategories, initialProducts }: Props) {
   const [categories, setCategories] = useState(initialCategories);
   const [products, setProducts] = useState(initialProducts);
-  const [categoryName, setCategoryName] = useState("");
-  const [categoryDescription, setCategoryDescription] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [availabilityFilter, setAvailabilityFilter] = useState("all");
   const [visibilityFilter, setVisibilityFilter] = useState("all");
-  const [draft, setDraft] = useState<Draft>(() => blankDraft(initialCategories.find((item) => item.is_active)?.id));
+  const [draft, setDraft] = useState<Draft>(() => blankDraft());
   const [editingId, setEditingId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [categorySelectionError, setCategorySelectionError] = useState("");
   const [selectedImage, setSelectedImage] = useState<{ file: File; previewUrl: string } | null>(null);
   const [imageAltText, setImageAltText] = useState("");
   const [processingImage, setProcessingImage] = useState(false);
   const [savingImage, setSavingImage] = useState(false);
+  const [failedProductImageIds, setFailedProductImageIds] = useState<Set<string>>(() => new Set());
+  const [productModalOpen, setProductModalOpen] = useState(false);
+  const productDialogRef = useRef<HTMLDialogElement>(null);
   const categoryById = useMemo(() => new Map(categories.map((category) => [category.id, category])), [categories]);
   const activeCategories = categories.filter((category) => category.is_active);
   const normalizedQuery = searchQuery.trim().toLocaleLowerCase("es");
   const filteredProducts = products.filter((product) => {
-    const category = categoryById.get(product.category_id);
-    const matchesQuery = !normalizedQuery || `${product.name} ${product.description ?? ""} ${category?.name ?? ""}`
+    const productCategories = product.categoryIds.map((id) => categoryById.get(id)).filter((category) => category !== undefined);
+    const matchesQuery = !normalizedQuery || `${product.name} ${product.description ?? ""} ${productCategories.map((category) => category.name).join(" ")}`
       .toLocaleLowerCase("es")
       .includes(normalizedQuery);
-    const matchesCategory = categoryFilter === "all" || product.category_id === categoryFilter;
+    const matchesCategory = categoryFilter === "all" || product.categoryIds.includes(categoryFilter);
     const matchesAvailability = availabilityFilter === "all" || product.availability_status === availabilityFilter;
-    const isVisible = product.is_active && product.availability_status !== "inactive" && category?.is_active;
+    const isVisible = product.is_active && product.availability_status !== "inactive" && productCategories.some((category) => category.is_active);
     const matchesVisibility = visibilityFilter === "all" || (visibilityFilter === "visible" ? isVisible : !isVisible);
     return matchesQuery && matchesCategory && matchesAvailability && matchesVisibility;
   });
@@ -81,8 +89,10 @@ export default function CatalogManager({ initialCategories, initialProducts }: P
   const set = <Key extends keyof Draft>(key: Key, value: Draft[Key]) =>
     setDraft((current) => ({ ...current, [key]: value }));
   const reset = () => {
+    setProductModalOpen(false);
+    setCategorySelectionError("");
     setEditingId(null);
-    setDraft(blankDraft(activeCategories[0]?.id));
+    setDraft(blankDraft());
     setSelectedImage(null);
     setImageAltText("");
   };
@@ -91,64 +101,101 @@ export default function CatalogManager({ initialCategories, initialProducts }: P
     if (selectedImage) URL.revokeObjectURL(selectedImage.previewUrl);
   }, [selectedImage]);
 
-  async function createCategory(event: SubmitEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setSaving(true);
-    try {
-      const { category } = await sileo.promise(
-        api<{ category: AdminCategory }>("/api/admin/categories", "POST", { name: categoryName, description: categoryDescription }),
-        {
-          loading: { title: "Creando categoría…" },
-          success: { title: "Categoría creada", description: "Ya puedes asignarla a un producto." },
-          error: (error) => ({ title: "No se pudo crear", description: String(error) }),
-        },
-      );
-      setCategories((current) => [...current, category].sort((a, b) => a.name.localeCompare(b.name)));
-      window.dispatchEvent(new CustomEvent<AdminCategory>("admin:category-changed", { detail: category }));
-      setCategoryName("");
-      setCategoryDescription("");
-      if (!draft.categoryId) set("categoryId", category.id);
-    } catch {
-      // Sileo informa el error.
-    } finally {
-      setSaving(false);
-    }
+  useEffect(() => {
+    const dialog = productDialogRef.current;
+    if (!dialog) return;
+    if (productModalOpen && !dialog.open) dialog.showModal();
+    else if (!productModalOpen && dialog.open) dialog.close();
+  }, [productModalOpen]);
+
+  async function ensureCategory(name: string, description: string | null = null) {
+    const existing = categories.find((category) => normalizeCategoryName(category.name) === normalizeCategoryName(name));
+    if (existing) return existing;
+    const { category } = await api<{ category: AdminCategory }>("/api/admin/categories", "POST", { name, description });
+    setCategories((current) => current.some((item) => item.id === category.id)
+      ? current
+      : [...current, category].sort((a, b) => a.name.localeCompare(b.name)));
+    window.dispatchEvent(new CustomEvent<AdminCategory>("admin:category-changed", { detail: category }));
+    return category;
+  }
+
+  async function createCategoryFromSelector(name: string) {
+    return sileo.promise(ensureCategory(name), {
+      loading: { title: "Creando categoría…" },
+      success: { title: "Categoría creada" },
+      error: (error) => ({ title: "No se pudo crear", description: String(error) }),
+    });
+  }
+
+
+  async function uploadSelectedImage(product: Pick<AdminProduct, "id" | "name">) {
+    if (!selectedImage) return null;
+    const form = new FormData();
+    form.set("productId", product.id);
+    const typedAlt = imageAltText.trim();
+    form.set("altText", typedAlt || (product.name.trim().length >= 3 ? product.name.trim() : `Imagen ${product.name.trim()}`));
+    form.set("image", selectedImage.file);
+    const response = await fetch("/api/admin/product-image", { method: "POST", body: form });
+    const result = await response.json() as { image?: AdminProduct["image"]; warning?: string | null; error?: string };
+    if (!response.ok || !result.image) throw new Error(result.error ?? "El producto se guardó, pero la imagen no pudo subirse.");
+    return result;
   }
 
   async function persist(productId?: string, changes?: Partial<Draft>) {
     const values = { ...draft, ...changes };
-    if (!values.categoryId) {
-      sileo.error({ title: "Crea una categoría primero", description: "Todo producto debe pertenecer a una categoría." });
+    if (selectedImage && imageAltText.trim().length > 0 && imageAltText.trim().length < 3) {
+      sileo.error({ title: "Completa el texto alternativo", description: "Usa al menos 3 caracteres o deja el campo vacío para usar el nombre del producto." });
       return;
     }
+    if (values.categoryIds.length === 0) {
+      setCategorySelectionError("Selecciona al menos una categoría para el producto.");
+      sileo.error({ title: "Selecciona una categoría", description: "Todo producto debe pertenecer al menos a una categoría." });
+      return;
+    }
+    setCategorySelectionError("");
     setSaving(true);
     try {
-      const { product } = await sileo.promise(
-        api<{ product: AdminProduct }>("/api/admin/products", productId ? "PATCH" : "POST", {
-          ...(productId ? { id: productId } : {}),
-          ...values,
-          price: Number(values.price),
-        }),
-        {
-          loading: { title: productId ? "Guardando producto…" : "Creando producto…" },
-          success: { title: productId ? "Producto actualizado" : "Producto creado" },
-          error: (error) => ({ title: "No se pudo guardar", description: String(error) }),
-        },
-      );
+      const { product } = await api<{ product: AdminProduct }>("/api/admin/products", productId ? "PATCH" : "POST", {
+        ...(productId ? { id: productId } : {}),
+        ...values,
+        price: Number(values.price),
+      });
       setProducts((current) => [product, ...current.filter((item) => item.id !== product.id)]);
-      window.dispatchEvent(new CustomEvent<AdminProduct>("admin:product-changed", { detail: product }));
+      if (!productId) setEditingId(product.id);
+      let savedProduct = product;
+      let imageWarning: string | null = null;
+
+      if (selectedImage) {
+        try {
+          const imageResult = await uploadSelectedImage(product);
+          if (!imageResult?.image) throw new Error("No se recibió la confirmación de la imagen.");
+          savedProduct = { ...product, image: imageResult.image };
+          setProducts((current) => current.map((item) => item.id === product.id ? savedProduct : item));
+          setSelectedImage(null);
+          imageWarning = imageResult.warning ?? null;
+        } catch (error) {
+          window.dispatchEvent(new CustomEvent<AdminProduct>("admin:product-changed", { detail: savedProduct }));
+          sileo.error({ title: "Producto guardado; falta la imagen", description: error instanceof Error ? error.message : "La imagen sigue seleccionada. Revisa la conexión e inténtalo de nuevo." });
+          return;
+        }
+      }
+
+      window.dispatchEvent(new CustomEvent<AdminProduct>("admin:product-changed", { detail: savedProduct }));
+      if (imageWarning) sileo.warning({ title: "Producto e imagen guardados con aviso", description: imageWarning });
+      else sileo.success({ title: productId ? "Producto actualizado" : "Producto creado" });
       reset();
-    } catch {
-      // Sileo informa el error.
+    } catch (error) {
+      sileo.error({ title: "No se pudo guardar el producto", description: error instanceof Error ? error.message : "Revisa la conexión e inténtalo de nuevo." });
     } finally {
       setSaving(false);
     }
   }
 
   function edit(product: AdminProduct) {
+    setCategorySelectionError("");
     setEditingId(product.id);
     setDraft({
-      categoryId: product.category_id,
+      categoryIds: product.categoryIds,
       name: product.name,
       description: product.description ?? "",
       price: String(product.price),
@@ -157,6 +204,16 @@ export default function CatalogManager({ initialCategories, initialProducts }: P
     });
     setSelectedImage(null);
     setImageAltText(product.image?.altText ?? product.name);
+    setProductModalOpen(true);
+  }
+
+  function createProductDraft() {
+    setCategorySelectionError("");
+    setEditingId(null);
+    setDraft(blankDraft());
+    setSelectedImage(null);
+    setImageAltText("");
+    setProductModalOpen(true);
   }
 
   async function selectImage(file?: File) {
@@ -171,29 +228,6 @@ export default function CatalogManager({ initialCategories, initialProducts }: P
       sileo.error({ title: "No se pudo preparar la imagen", description: error instanceof ProductImageProcessingError ? error.message : "Prueba con otra fotografía." });
     } finally {
       setProcessingImage(false);
-    }
-  }
-
-  async function saveImage(product: AdminProduct) {
-    if (!selectedImage) return;
-    setSavingImage(true);
-    try {
-      const form = new FormData();
-      form.set("productId", product.id);
-      form.set("altText", imageAltText || product.name);
-      form.set("image", selectedImage.file);
-      const response = await fetch("/api/admin/product-image", { method: "POST", body: form });
-      const result = await response.json() as { image?: AdminProduct["image"]; warning?: string | null; error?: string };
-      const image = result.image;
-      if (!response.ok || !image) throw new Error(result.error ?? "No fue posible guardar la imagen.");
-      setProducts((current) => current.map((item) => item.id === product.id ? { ...item, image } : item));
-      setSelectedImage(null);
-      if (result.warning) sileo.warning({ title: "Imagen guardada con aviso", description: result.warning });
-      else sileo.success({ title: "Imagen guardada", description: "La imagen del producto quedó actualizada." });
-    } catch (error) {
-      sileo.error({ title: "No se pudo guardar", description: error instanceof Error ? error.message : "Revisa la conexión e inténtalo de nuevo." });
-    } finally {
-      setSavingImage(false);
     }
   }
 
@@ -216,7 +250,7 @@ export default function CatalogManager({ initialCategories, initialProducts }: P
 
   function toggle(product: AdminProduct) {
     const changes: Draft = {
-      categoryId: product.category_id,
+      categoryIds: product.categoryIds,
       name: product.name,
       description: product.description ?? "",
       price: String(product.price),
@@ -231,35 +265,87 @@ export default function CatalogManager({ initialCategories, initialProducts }: P
   return (
     <>
       <Toaster position="top-right" options={{ fill: "#FFFFFF", roundness: 16, duration: 4_000 }} />
-      <section className="grid justify-start gap-6 xl:grid-cols-[minmax(0,52rem)_22.5rem]">
+      <section className="grid justify-start gap-6">
         <div className="rounded-[20px] border border-border-subtle bg-surface-card p-6 shadow-[0_4px_20px_-2px_rgba(134,54,93,0.05)] sm:p-8">
-          <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="flex flex-wrap items-center justify-between gap-5">
             <div>
               <p className="text-xs font-semibold tracking-[0.14em] text-brand-primary uppercase">Productos</p>
-              <h2 className="mt-2 font-display text-2xl font-semibold">{editingId ? "Editar producto" : "Agregar producto"}</h2>
-              <p className="mt-2 text-sm leading-6 text-text-secondary">El inventario inicia en cero y se ajustará en su propia sección.</p>
+              <h2 className="mt-2 font-display text-2xl font-semibold">Administra el catálogo</h2>
+              <p className="mt-2 text-sm leading-6 text-text-secondary">Crea o edita productos en una ventana enfocada. Ajusta las existencias en Inventario.</p>
             </div>
-            {editingId && <button className="min-h-11 rounded-full px-4 text-sm font-semibold text-brand-primary hover:bg-brand-primary-soft" type="button" onClick={reset}>Cancelar edición</button>}
+            <button className="min-h-11 rounded-full bg-brand-primary px-5 py-3 text-sm font-semibold text-white hover:bg-brand-primary-hover disabled:cursor-not-allowed disabled:bg-brand-primary-soft disabled:text-text-secondary" type="button" onClick={createProductDraft}>
+              Crear producto
+            </button>
           </div>
 
-          <form className="mt-7 grid gap-5 sm:grid-cols-2" onSubmit={(event) => { event.preventDefault(); void persist(editingId ?? undefined); }}>
+          {activeCategories.length === 0 && <p className="mt-4 text-sm text-text-secondary">Puedes crear la primera categoría desde el modal de producto.</p>}
+
+          <dialog
+            ref={productDialogRef}
+            className="m-auto max-h-[90dvh] w-[min(96vw,58rem)] overflow-y-auto rounded-[20px] border border-border-subtle bg-surface-card p-0 text-text-primary shadow-[0_20px_40px_-8px_rgba(44,26,35,0.16)] backdrop:bg-[#2C1A23]/45 backdrop:backdrop-blur-sm"
+            aria-labelledby="product-dialog-title"
+            onCancel={(event) => { event.preventDefault(); reset(); }}
+            onClick={(event) => { if (event.target === event.currentTarget) reset(); }}
+          >
+            <div className="flex items-start justify-between gap-4 border-b border-border-subtle px-5 py-5 sm:px-8">
+              <div>
+                <p className="text-xs font-semibold tracking-[0.14em] text-brand-primary uppercase">Productos</p>
+                <h2 id="product-dialog-title" className="mt-2 font-display text-2xl font-semibold">{editingId ? "Editar producto" : "Crear producto"}</h2>
+                <p className="mt-2 text-sm leading-6 text-text-secondary">El inventario inicia en cero y se ajustará en su propia sección.</p>
+              </div>
+          <button className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-full text-brand-primary hover:bg-brand-primary-soft" type="button" onClick={reset} aria-label="Cerrar ventana">
+            <svg aria-hidden="true" className="size-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
+              <path d="m6 6 12 12M18 6 6 18" />
+            </svg>
+          </button>
+            </div>
+
+          <form className="grid gap-5 px-5 py-6 sm:grid-cols-2 sm:px-8" onSubmit={(event) => { event.preventDefault(); void persist(editingId ?? undefined); }}>
             <label className="text-sm font-semibold">Nombre
               <input className="mt-2 min-h-11 w-full rounded-lg border border-border-subtle bg-white px-3 font-normal outline-none focus:border-brand-primary focus:ring-3 focus:ring-brand-primary/12" value={draft.name} onChange={(event) => set("name", event.target.value)} minLength={2} maxLength={140} required />
             </label>
-            <label className="text-sm font-semibold">Categoría
-              <select className="mt-2 min-h-11 w-full rounded-lg border border-border-subtle bg-white px-3 font-normal outline-none focus:border-brand-primary focus:ring-3 focus:ring-brand-primary/12" value={draft.categoryId} onChange={(event) => set("categoryId", event.target.value)} required>
-                <option value="">Selecciona una categoría</option>
-                {categories.map((category) => <option key={category.id} value={category.id}>{category.name}{category.is_active ? "" : " (inactiva)"}</option>)}
-              </select>
-            </label>
+            <div className="sm:col-span-2">
+              <CategoryMultiSelect
+                categories={categories}
+                selectedIds={draft.categoryIds}
+                onChange={(categoryIds) => { set("categoryIds", categoryIds); if (categoryIds.length) setCategorySelectionError(""); }}
+                onCreateCategory={createCategoryFromSelector}
+                disabled={saving}
+              />
+              {categorySelectionError && <p className="mt-2 text-sm text-red-700" role="alert">{categorySelectionError}</p>}
+            </div>
             <label className="text-sm font-semibold">Precio estimado (CRC)
               <input className="mt-2 min-h-11 w-full rounded-lg border border-border-subtle bg-white px-3 font-normal outline-none focus:border-brand-primary focus:ring-3 focus:ring-brand-primary/12" value={draft.price} onChange={(event) => set("price", event.target.value)} type="number" min="0" step="0.01" inputMode="decimal" required />
             </label>
-            <label className="text-sm font-semibold">Disponibilidad
-              <select className="mt-2 min-h-11 w-full rounded-lg border border-border-subtle bg-white px-3 font-normal outline-none focus:border-brand-primary focus:ring-3 focus:ring-brand-primary/12" value={draft.availabilityStatus} onChange={(event) => set("availabilityStatus", event.target.value as ProductAvailabilityStatus)}>
-                {Object.entries(labels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-              </select>
-            </label>
+            <fieldset className="min-w-0" disabled={saving}>
+              <legend className="text-sm font-semibold">Disponibilidad</legend>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {availabilityOptions.map((status) => {
+                  const selected = draft.availabilityStatus === status;
+                  const selectedClass = selected
+                    ? "border-brand-primary bg-brand-primary text-white"
+                    : "border-border-subtle bg-white text-text-primary hover:border-accent-rose hover:bg-brand-primary-soft";
+                  return <label key={status} className={`relative inline-flex min-h-11 items-center gap-2 rounded-full border px-3 text-sm font-semibold focus-within:outline-none ${saving ? "cursor-not-allowed opacity-60" : "cursor-pointer"} ${selectedClass} focus-within:ring-2 focus-within:ring-brand-primary focus-within:ring-offset-2`}>
+                    <input
+                      className="peer sr-only"
+                      type="radio"
+                      name="availabilityStatus"
+                      value={status}
+                      checked={selected}
+                      onChange={() => set("availabilityStatus", status)}
+                    />
+                    <svg aria-hidden="true" className="size-4 shrink-0" fill="none" viewBox="0 0 20 20" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+                      {status === "in_stock" && <><circle cx="10" cy="10" r="7" /><path d="m6.5 10 2.2 2.2 4.8-5" /></>}
+                      {status === "on_order" && <><circle cx="10" cy="10" r="7" /><path d="M10 6v4l2.5 1.5" /></>}
+                      {status === "out_of_stock" && <><circle cx="10" cy="10" r="7" /><path d="M6.5 10h7" /></>}
+                      {status === "inactive" && <><path d="M2.5 10s2.7-5 7.5-5 7.5 5 7.5 5-2.7 5-7.5 5-7.5-5-7.5-5Z" /><circle cx="10" cy="10" r="2" /><path d="m4 4 12 12" /></>}
+                    </svg>
+                    <span>{labels[status]}</span>
+                    {selected && <svg aria-hidden="true" className="size-4 shrink-0" fill="none" viewBox="0 0 20 20" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m4.5 10.5 3.5 3 7.5-7" /></svg>}
+                  </label>;
+                })}
+              </div>
+            </fieldset>
             <label className="sm:col-span-2 text-sm font-semibold">Descripción <span className="font-normal text-text-secondary">(opcional)</span>
               <textarea className="mt-2 min-h-28 w-full rounded-lg border border-border-subtle bg-white px-3 py-2 font-normal outline-none focus:border-brand-primary focus:ring-3 focus:ring-brand-primary/12" value={draft.description} onChange={(event) => set("description", event.target.value)} maxLength={2_000} />
             </label>
@@ -267,51 +353,32 @@ export default function CatalogManager({ initialCategories, initialProducts }: P
               <input className="size-5 accent-brand-primary" checked={draft.isActive} onChange={(event) => set("isActive", event.target.checked)} type="checkbox" />
               Mostrar este producto en el catálogo cuando su categoría esté activa.
             </label>
-            {editingId && (() => {
-              const product = products.find((item) => item.id === editingId);
-              if (!product) return null;
-              const preview = selectedImage?.previewUrl ?? product.image?.url;
+            {(() => {
+              const product = editingId ? products.find((item) => item.id === editingId) : undefined;
+              const preview = selectedImage?.previewUrl ?? product?.image?.url;
               return <section className="sm:col-span-2 rounded-2xl border border-border-subtle bg-surface-soft p-4" aria-label="Imagen del producto">
                 <h3 className="font-display text-lg font-semibold">Imagen del producto</h3>
-                <p className="mt-1 text-sm text-text-secondary">Una imagen por producto. JPG, PNG, WebP o HEIC/HEIF; se optimiza en este dispositivo antes de subirla.</p>
-                {preview ? <img className="mt-4 aspect-[4/5] w-36 rounded-xl border border-border-subtle bg-white object-cover" src={preview} alt={imageAltText || product.name} width="360" height="450" /> : <p className="mt-4 text-sm text-text-secondary">Este producto aún no tiene imagen.</p>}
+                <p className="mt-1 text-sm text-text-secondary">Una imagen por producto. JPG, PNG, WebP o HEIC/HEIF; se optimiza en este dispositivo y se guarda junto con el producto.</p>
+                {preview ? <img className="mt-4 aspect-[4/5] w-36 rounded-xl border border-border-subtle bg-white object-cover" src={preview} alt={imageAltText || product?.name || draft.name || "Vista previa del producto"} width="360" height="450" /> : <p className="mt-4 text-sm text-text-secondary">{product?.image ? "La imagen guardada no está disponible para vista previa." : "Aún no se ha seleccionado una imagen."}</p>}
                 <label className="mt-4 block text-sm font-semibold">Texto alternativo
-                  <input className="mt-2 min-h-11 w-full rounded-lg border border-border-subtle bg-white px-3 font-normal outline-none focus:border-brand-primary focus:ring-3 focus:ring-brand-primary/12" value={imageAltText} onChange={(event) => setImageAltText(event.target.value)} maxLength={240} placeholder={`Descripción breve de ${product.name}`} />
+                  <input className="mt-2 min-h-11 w-full rounded-lg border border-border-subtle bg-white px-3 font-normal outline-none focus:border-brand-primary focus:ring-3 focus:ring-brand-primary/12 disabled:bg-surface-soft" value={imageAltText} onChange={(event) => setImageAltText(event.target.value)} maxLength={240} disabled={saving} placeholder={`Descripción breve de ${draft.name || "la imagen"}`} />
                 </label>
                 <label className="mt-4 inline-flex min-h-11 cursor-pointer items-center rounded-full border-[1.5px] border-brand-primary px-4 text-sm font-semibold text-brand-primary hover:bg-white">
-                  {processingImage ? "Preparando…" : selectedImage ? "Elegir otra fotografía" : product.image ? "Reemplazar fotografía" : "Seleccionar fotografía"}
-                  <input className="sr-only" type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif" disabled={processingImage || savingImage} onChange={(event) => { void selectImage(event.currentTarget.files?.[0]); event.currentTarget.value = ""; }} />
+                  {processingImage ? "Preparando…" : selectedImage ? "Elegir otra fotografía" : product?.image ? "Reemplazar fotografía" : "Seleccionar fotografía"}
+                  <input className="sr-only" type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif" disabled={processingImage || savingImage || saving} onChange={(event) => { void selectImage(event.currentTarget.files?.[0]); event.currentTarget.value = ""; }} />
                 </label>
-                {selectedImage && <button className="ml-2 min-h-11 rounded-full px-4 text-sm font-semibold text-text-secondary hover:bg-white" type="button" onClick={() => setSelectedImage(null)}>Descartar selección</button>}
-                <div className="mt-4 flex flex-wrap gap-2">
-                  {selectedImage && <button className="min-h-11 rounded-full bg-brand-primary px-5 text-sm font-semibold text-white hover:bg-brand-primary-hover disabled:opacity-60" type="button" disabled={savingImage || processingImage || imageAltText.trim().length < 3} onClick={() => void saveImage(product)}>{savingImage ? "Guardando imagen…" : "Guardar imagen"}</button>}
-                  {product.image && <button className="min-h-11 rounded-full px-4 text-sm font-semibold text-brand-primary hover:bg-white disabled:opacity-60" type="button" disabled={savingImage} onClick={() => void unlinkImage(product)}>Desvincular imagen</button>}
-                </div>
+                {selectedImage && <button className="ml-2 min-h-11 rounded-full px-4 text-sm font-semibold text-text-secondary hover:bg-white disabled:opacity-60" type="button" disabled={saving} onClick={() => setSelectedImage(null)}>Descartar selección</button>}
+                {product?.image && <div className="mt-4"><button className="min-h-11 rounded-full px-4 text-sm font-semibold text-brand-primary hover:bg-white disabled:opacity-60" type="button" disabled={savingImage || saving} onClick={() => void unlinkImage(product)}>Desvincular imagen</button></div>}
               </section>;
             })()}
             <div className="sm:col-span-2 flex flex-wrap gap-3">
-              <button className="min-h-11 rounded-full bg-brand-primary px-5 py-3 text-sm font-semibold text-white hover:bg-brand-primary-hover disabled:cursor-not-allowed disabled:bg-brand-primary-soft disabled:text-text-secondary" type="submit" disabled={saving || activeCategories.length === 0}>{saving ? "Guardando…" : editingId ? "Guardar cambios" : "Crear producto"}</button>
-              {activeCategories.length === 0 && <p className="self-center text-sm text-text-secondary">Crea una categoría activa para añadir productos.</p>}
+              <button className="min-h-11 rounded-full bg-brand-primary px-5 py-3 text-sm font-semibold text-white hover:bg-brand-primary-hover disabled:cursor-not-allowed disabled:bg-brand-primary-soft disabled:text-text-secondary" type="submit" disabled={saving || processingImage}>{saving ? "Guardando…" : "Guardar producto"}</button>
+              {activeCategories.length === 0 && <p className="self-center text-sm text-text-secondary">Crea una categoría activa desde este selector.</p>}
             </div>
           </form>
+          </dialog>
         </div>
 
-        <aside className="h-fit rounded-[20px] border border-border-subtle bg-surface-card p-6 shadow-[0_4px_20px_-2px_rgba(134,54,93,0.05)]">
-          <p className="text-xs font-semibold tracking-[0.14em] text-brand-primary uppercase">Categorías</p>
-          <h2 className="mt-2 font-display text-2xl font-semibold">Organiza el catálogo</h2>
-          <form className="mt-5 space-y-4" onSubmit={createCategory}>
-            <label className="block text-sm font-semibold">Nombre
-              <input className="mt-2 min-h-11 w-full rounded-lg border border-border-subtle bg-white px-3 font-normal outline-none focus:border-brand-primary focus:ring-3 focus:ring-brand-primary/12" value={categoryName} onChange={(event) => setCategoryName(event.target.value)} minLength={2} maxLength={80} required />
-            </label>
-            <label className="block text-sm font-semibold">Descripción <span className="font-normal text-text-secondary">(opcional)</span>
-              <textarea className="mt-2 min-h-24 w-full rounded-lg border border-border-subtle bg-white px-3 py-2 font-normal outline-none focus:border-brand-primary focus:ring-3 focus:ring-brand-primary/12" value={categoryDescription} onChange={(event) => setCategoryDescription(event.target.value)} maxLength={2_000} />
-            </label>
-            <button className="min-h-11 w-full rounded-full border-[1.5px] border-brand-primary px-5 py-3 text-sm font-semibold text-brand-primary hover:bg-brand-primary-soft disabled:cursor-not-allowed disabled:border-border-subtle disabled:text-text-secondary" type="submit" disabled={saving}>{saving ? "Creando…" : "Crear categoría"}</button>
-          </form>
-          <ul className="mt-6 space-y-2 border-t border-border-subtle pt-5" aria-label="Categorías existentes">
-            {categories.length === 0 ? <li className="text-sm text-text-secondary">Aún no hay categorías.</li> : categories.map((category) => <li className="flex justify-between gap-3 rounded-xl bg-surface-soft px-3 py-3" key={category.id}><span className="text-sm font-semibold">{category.name}</span><span className="text-xs text-text-secondary">{category.is_active ? "Activa" : "Inactiva"}</span></li>)}
-          </ul>
-        </aside>
       </section>
 
       <section className="mt-10">
@@ -342,25 +409,36 @@ export default function CatalogManager({ initialCategories, initialProducts }: P
         </div>
         {products.length === 0 ? <div className="mt-5 rounded-[20px] border border-dashed border-border-subtle bg-surface-card px-6 py-12 text-center"><h3 className="font-display text-xl font-semibold">Tu catálogo está listo para comenzar</h3><p className="mt-3 text-sm leading-6 text-text-secondary">Agrega una categoría y luego registra tu primer producto.</p></div> :
           filteredProducts.length === 0 ? <div className="mt-5 rounded-[20px] border border-dashed border-border-subtle bg-surface-card px-6 py-10 text-center"><h3 className="font-display text-xl font-semibold">No encontramos productos con esos filtros</h3><p className="mt-2 text-sm text-text-secondary">Prueba otro nombre o cambia las opciones seleccionadas.</p>{hasFilters && <button className="mt-4 min-h-11 rounded-full px-4 text-sm font-semibold text-brand-primary hover:bg-brand-primary-soft" type="button" onClick={() => { setSearchQuery(""); setCategoryFilter("all"); setAvailabilityFilter("all"); setVisibilityFilter("all"); }}>Limpiar filtros</button>}</div> :
-          <ul className="mt-5 grid grid-cols-[repeat(auto-fill,minmax(17rem,17rem))] justify-start gap-4">{filteredProducts.map((product) => {
-            const category = categoryById.get(product.category_id);
-            const visible = product.is_active && product.availability_status !== "inactive" && category?.is_active;
-            return <li className="relative rounded-[20px] border border-border-subtle bg-surface-card p-5 shadow-[0_4px_20px_-2px_rgba(134,54,93,0.05)]" key={product.id}>
-              {product.image?.url && <img className="mb-4 aspect-[4/5] w-full rounded-xl border border-border-subtle object-cover" src={product.image.url} alt={product.image.altText} width="480" height="600" loading="lazy" />}
-              <p className="max-w-[60%] text-xs font-semibold tracking-[0.12em] text-text-secondary uppercase">{category?.name ?? "Categoría eliminada"}</p>
-              <span className={`absolute right-5 top-5 inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-semibold ${badgeStyles[product.availability_status]}`}>
-                <svg aria-hidden="true" className="size-3.5 shrink-0" fill="none" viewBox="0 0 16 16" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
-                  {product.availability_status === "in_stock" && <path d="m3.5 8 3 3 6-6" />}
-                  {product.availability_status === "on_order" && <><circle cx="8" cy="8" r="5.5" /><path d="M8 4.5V8l2.25 1.5" /></>}
-                  {(product.availability_status === "out_of_stock" || product.availability_status === "inactive") && <><circle cx="8" cy="8" r="5.5" /><path d="m4.1 4.1 7.8 7.8" /></>}
-                </svg>
-                {labels[product.availability_status]}
-              </span>
-              <h3 className="mt-2 font-display text-xl font-medium">{product.name}</h3>
-              <p className="mt-4 text-lg font-semibold">{price(Number(product.price), product.currency)}</p>
-              {product.description && <p className="mt-2 text-sm leading-6 text-text-secondary">{product.description}</p>}
-              <p className="mt-4 text-xs text-text-secondary">{visible ? "Visible en el catálogo" : "No visible en el catálogo"}</p>
-              <div className="mt-5 flex flex-wrap gap-2"><button className="min-h-11 rounded-full border-[1.5px] border-brand-primary px-4 text-sm font-semibold text-brand-primary hover:bg-brand-primary-soft" type="button" onClick={() => edit(product)}>Editar</button><button className="min-h-11 rounded-full px-4 text-sm font-semibold text-brand-primary hover:bg-brand-primary-soft disabled:text-text-secondary" type="button" onClick={() => toggle(product)} disabled={saving}>{product.is_active ? "Desactivar" : "Activar"}</button></div>
+          <ul className="mt-5 grid grid-cols-1 items-stretch gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">{filteredProducts.map((product) => {
+            const productCategories = product.categoryIds.map((id) => categoryById.get(id)).filter((category) => category !== undefined);
+            const visible = product.is_active && product.availability_status !== "inactive" && productCategories.some((category) => category.is_active);
+            return <li className="flex h-full flex-col rounded-[20px] border border-border-subtle bg-surface-card p-4 shadow-[0_4px_20px_-2px_rgba(134,54,93,0.05)]" key={product.id}>
+              <div className="relative aspect-[4/5] overflow-hidden rounded-xl border border-border-subtle bg-gradient-to-br from-surface-soft via-brand-primary-soft to-[#F6E4D8]">
+                {product.image?.url && !failedProductImageIds.has(product.id)
+                  ? <img className="size-full object-cover" src={product.image.url} alt={product.image.altText} width="480" height="600" loading="lazy" onError={() => setFailedProductImageIds((current) => new Set(current).add(product.id))} />
+                  : <div className="flex size-full items-end p-4"><span className="rounded-xl border border-white/70 bg-white/55 px-4 py-3 font-display text-lg italic text-brand-primary/80">Alma Esencia CR</span></div>}
+                <span className={`absolute left-3 top-3 inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-semibold shadow-sm ${badgeStyles[product.availability_status]}`}>
+                  <svg aria-hidden="true" className="size-3.5 shrink-0" fill="none" viewBox="0 0 16 16" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+                    {product.availability_status === "in_stock" && <path d="m3.5 8 3 3 6-6" />}
+                    {product.availability_status === "on_order" && <><circle cx="8" cy="8" r="5.5" /><path d="M8 4.5V8l2.25 1.5" /></>}
+                    {(product.availability_status === "out_of_stock" || product.availability_status === "inactive") && <><circle cx="8" cy="8" r="5.5" /><path d="m4.1 4.1 7.8 7.8" /></>}
+                  </svg>
+                  {labels[product.availability_status]}
+                </span>
+              </div>
+              <div className="flex flex-1 flex-col pt-4">
+                <p className="line-clamp-2 min-h-8 text-xs font-semibold tracking-[0.12em] text-text-secondary uppercase">{productCategories.map((category) => category.name).join(" · ") || "Categoría eliminada"}</p>
+                <h3 className="mt-2 line-clamp-2 min-h-14 font-display text-xl font-medium">{product.name}</h3>
+                <p className="mt-2 line-clamp-2 min-h-12 text-sm leading-6 text-text-secondary">{product.description || "Sin descripción."}</p>
+                <div className="mt-auto pt-4">
+                  <p className="text-lg font-semibold">{price(Number(product.price), product.currency)}</p>
+                  <p className="mt-1 min-h-5 text-xs text-text-secondary">{visible ? "Visible en el catálogo" : "No visible en el catálogo"}</p>
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    <button className="min-h-11 rounded-full border-[1.5px] border-brand-primary px-4 text-sm font-semibold text-brand-primary hover:bg-brand-primary-soft" type="button" onClick={() => edit(product)}>Editar</button>
+                    <button className="min-h-11 rounded-full px-4 text-sm font-semibold text-brand-primary hover:bg-brand-primary-soft disabled:text-text-secondary" type="button" onClick={() => toggle(product)} disabled={saving}>{product.is_active ? "Desactivar" : "Activar"}</button>
+                  </div>
+                </div>
+              </div>
             </li>;
           })}</ul>}
       </section>

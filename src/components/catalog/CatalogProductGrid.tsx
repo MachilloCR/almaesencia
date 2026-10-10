@@ -26,11 +26,11 @@ export default function CatalogProductGrid({ categories, products }: Props) {
   const filteredProducts = useMemo(() => {
     const normalizedQuery = searchQuery.trim().toLocaleLowerCase("es");
     return products.filter((product) => {
-      const category = categoriesById.get(product.category_id);
-      const matchesQuery = !normalizedQuery || `${product.name} ${product.description ?? ""} ${category?.name ?? ""}`
+      const productCategories = product.categoryIds.map((categoryId) => categoriesById.get(categoryId)).filter((category) => category !== undefined);
+      const matchesQuery = !normalizedQuery || `${product.name} ${product.description ?? ""} ${productCategories.map((category) => category.name).join(" ")}`
         .toLocaleLowerCase("es")
         .includes(normalizedQuery);
-      const matchesCategory = categoryFilter === "all" || product.category_id === categoryFilter;
+      const matchesCategory = categoryFilter === "all" || product.categoryIds.includes(categoryFilter);
       const matchesAvailability = availabilityFilter === "all" || product.availability_status === availabilityFilter;
       return matchesQuery && matchesCategory && matchesAvailability;
     });
@@ -81,7 +81,7 @@ export default function CatalogProductGrid({ categories, products }: Props) {
       ) : (
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 sm:gap-5 lg:grid-cols-4 lg:gap-6">
         {filteredProducts.map((product) => {
-          const category = categoriesById.get(product.category_id);
+          const categoryNames = product.categoryIds.map((categoryId) => categoriesById.get(categoryId)?.name).filter((name): name is string => Boolean(name));
           const status = availability[product.availability_status];
           const canAdd = product.availability_status !== "out_of_stock" && product.availability_status !== "inactive";
 
@@ -103,7 +103,7 @@ export default function CatalogProductGrid({ categories, products }: Props) {
                 </span>
               </div>
               <div className="px-3 py-3 sm:px-4 sm:py-4">
-                <p className="text-xs font-semibold tracking-[0.12em] text-text-secondary uppercase">{category?.name}</p>
+                <p className="line-clamp-2 min-h-8 text-xs font-semibold tracking-[0.12em] text-text-secondary uppercase">{categoryNames.join(" · ")}</p>
                 <h3 className="mt-2 truncate font-display text-lg font-medium text-text-primary sm:text-xl" title={product.name}>{product.name}</h3>
                 <div className="mt-3 flex items-center justify-between gap-2">
                   <div>

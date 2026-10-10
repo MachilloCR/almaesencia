@@ -21,8 +21,21 @@ export async function getPublicCatalogData(supabase: SupabaseClient<Database>) {
     throw new Error("No fue posible cargar el catálogo.");
   }
 
+  const productRows = productsResult.data;
+  const associationsResult = productRows.length
+    ? await supabase.from("product_categories").select("product_id, category_id").in("product_id", productRows.map((product) => product.id))
+    : { data: [], error: null };
+  if (associationsResult.error) throw new Error("No fue posible cargar las categorías del catálogo.");
+  const categoryIdsByProduct = new Map<string, string[]>();
+  for (const association of associationsResult.data) {
+    const ids = categoryIdsByProduct.get(association.product_id) ?? [];
+    ids.push(association.category_id);
+    categoryIdsByProduct.set(association.product_id, ids);
+  }
   const activeCategoryIds = new Set(categoriesResult.data.map((category) => category.id));
-  const products = (productsResult.data as AdminProduct[]).filter((product) => activeCategoryIds.has(product.category_id));
+  const products = (productRows as AdminProduct[])
+    .map((product) => ({ ...product, categoryIds: [product.category_id, ...(categoryIdsByProduct.get(product.id) ?? []).filter((id) => id !== product.category_id)] }))
+    .filter((product) => product.categoryIds.some((categoryId) => activeCategoryIds.has(categoryId)));
   const imagesResult = products.length
     ? await supabase.from("product_images").select("product_id, storage_path, alt_text, sort_order").in("product_id", products.map((product) => product.id)).order("sort_order")
     : { data: [], error: null };
