@@ -19,6 +19,7 @@ function formatPrice(value: number, currency: string) {
 export default function CatalogProductGrid({ categories, products }: Props) {
   const add = useCartStore((state) => state.add);
   const [searchQuery, setSearchQuery] = useState("");
+  const [failedImageIds, setFailedImageIds] = useState<Set<string>>(() => new Set());
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [availabilityFilter, setAvailabilityFilter] = useState("all");
   const categoriesById = useMemo(() => new Map(categories.map((category) => [category.id, category])), [categories]);
@@ -87,11 +88,11 @@ export default function CatalogProductGrid({ categories, products }: Props) {
           return (
             <article className="group w-full overflow-hidden rounded-[20px] border border-border-subtle bg-surface-card shadow-[0_4px_20px_-2px_rgba(134,54,93,0.05)] transition duration-300 hover:-translate-y-1 hover:border-accent-rose hover:shadow-[0_12px_28px_-4px_rgba(134,54,93,0.10)] motion-reduce:transform-none motion-reduce:transition-none" key={product.id}>
               <div className="relative aspect-[4/5] overflow-hidden bg-gradient-to-br from-surface-soft via-brand-primary-soft to-[#F6E4D8]">
-                <div className="absolute inset-0 transition-transform duration-300 group-hover:scale-[1.03] motion-reduce:transition-none motion-reduce:group-hover:scale-100">
+                {product.image?.url && !failedImageIds.has(product.id) ? <img className="absolute inset-0 size-full object-cover transition-transform duration-300 group-hover:scale-[1.03] motion-reduce:transition-none motion-reduce:group-hover:scale-100" src={product.image.url} alt={product.image.altText} width="640" height="800" loading="lazy" onError={() => setFailedImageIds((current) => new Set(current).add(product.id))} /> : <div className="absolute inset-0 transition-transform duration-300 group-hover:scale-[1.03] motion-reduce:transition-none motion-reduce:group-hover:scale-100">
                   <div className="absolute inset-4 flex items-end rounded-xl border border-white/70 bg-white/45 p-4 backdrop-blur-sm">
                     <p className="font-display text-xl italic text-brand-primary/75">Alma Esencia CR</p>
                   </div>
-                </div>
+                </div>}
                 <span className={`absolute left-4 top-4 inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-semibold ${status.classes}`}>
                   <svg aria-hidden="true" className="size-3.5 shrink-0" fill="none" viewBox="0 0 16 16" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
                     {product.availability_status === "in_stock" && <path d="m3.5 8 3 3 6-6" />}

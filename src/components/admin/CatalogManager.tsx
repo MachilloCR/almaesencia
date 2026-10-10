@@ -1,5 +1,6 @@
-import { type SubmitEvent, useMemo, useState } from "react";
+import { type SubmitEvent, useEffect, useMemo, useState } from "react";
 import { Toaster, sileo } from "sileo";
+import { optimizeProductImage, ProductImageProcessingError } from "../../lib/images/optimize-product-image";
 import type { AdminCategory, AdminProduct } from "../../services/admin-catalog";
 import type { ProductAvailabilityStatus } from "../../types/database";
 
@@ -57,6 +58,10 @@ export default function CatalogManager({ initialCategories, initialProducts }: P
   const [draft, setDraft] = useState<Draft>(() => blankDraft(initialCategories.find((item) => item.is_active)?.id));
   const [editingId, setEditingId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [selectedImage, setSelectedImage] = useState<{ file: File; previewUrl: string } | null>(null);
+  const [imageAltText, setImageAltText] = useState("");
+  const [processingImage, setProcessingImage] = useState(false);
+  const [savingImage, setSavingImage] = useState(false);
   const categoryById = useMemo(() => new Map(categories.map((category) => [category.id, category])), [categories]);
   const activeCategories = categories.filter((category) => category.is_active);
   const normalizedQuery = searchQuery.trim().toLocaleLowerCase("es");
@@ -78,7 +83,13 @@ export default function CatalogManager({ initialCategories, initialProducts }: P
   const reset = () => {
     setEditingId(null);
     setDraft(blankDraft(activeCategories[0]?.id));
+    setSelectedImage(null);
+    setImageAltText("");
   };
+
+  useEffect(() => () => {
+    if (selectedImage) URL.revokeObjectURL(selectedImage.previewUrl);
+  }, [selectedImage]);
 
   async function createCategory(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -144,6 +155,63 @@ export default function CatalogManager({ initialCategories, initialProducts }: P
       availabilityStatus: product.availability_status,
       isActive: product.is_active,
     });
+    setSelectedImage(null);
+    setImageAltText(product.image?.altText ?? product.name);
+  }
+
+  async function selectImage(file?: File) {
+    setSelectedImage(null);
+    if (!file) return;
+    setProcessingImage(true);
+    try {
+      const optimized = await optimizeProductImage(file);
+      setSelectedImage({ file: optimized.file, previewUrl: URL.createObjectURL(optimized.file) });
+      sileo.success({ title: "Imagen preparada", description: `${optimized.width} × ${optimized.height}px, máximo 2 MiB.` });
+    } catch (error) {
+      sileo.error({ title: "No se pudo preparar la imagen", description: error instanceof ProductImageProcessingError ? error.message : "Prueba con otra fotografía." });
+    } finally {
+      setProcessingImage(false);
+    }
+  }
+
+  async function saveImage(product: AdminProduct) {
+    if (!selectedImage) return;
+    setSavingImage(true);
+    try {
+      const form = new FormData();
+      form.set("productId", product.id);
+      form.set("altText", imageAltText || product.name);
+      form.set("image", selectedImage.file);
+      const response = await fetch("/api/admin/product-image", { method: "POST", body: form });
+      const result = await response.json() as { image?: AdminProduct["image"]; warning?: string | null; error?: string };
+      const image = result.image;
+      if (!response.ok || !image) throw new Error(result.error ?? "No fue posible guardar la imagen.");
+      setProducts((current) => current.map((item) => item.id === product.id ? { ...item, image } : item));
+      setSelectedImage(null);
+      if (result.warning) sileo.warning({ title: "Imagen guardada con aviso", description: result.warning });
+      else sileo.success({ title: "Imagen guardada", description: "La imagen del producto quedó actualizada." });
+    } catch (error) {
+      sileo.error({ title: "No se pudo guardar", description: error instanceof Error ? error.message : "Revisa la conexión e inténtalo de nuevo." });
+    } finally {
+      setSavingImage(false);
+    }
+  }
+
+  async function unlinkImage(product: AdminProduct) {
+    if (!product.image || !window.confirm("¿Desvincular la imagen de este producto?")) return;
+    setSavingImage(true);
+    try {
+      const response = await fetch("/api/admin/product-image", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ productId: product.id }) });
+      const result = await response.json() as { error?: string; warning?: string | null };
+      if (!response.ok) throw new Error(result.error ?? "No fue posible desvincular la imagen.");
+      setProducts((current) => current.map((item) => item.id === product.id ? { ...item, image: null } : item));
+      if (result.warning) sileo.warning({ title: "Imagen desvinculada con aviso", description: result.warning });
+      else sileo.success({ title: "Imagen desvinculada", description: "El producto ya no muestra esta imagen." });
+    } catch (error) {
+      sileo.error({ title: "No se pudo desvincular", description: error instanceof Error ? error.message : "Revisa la conexión e inténtalo de nuevo." });
+    } finally {
+      setSavingImage(false);
+    }
   }
 
   function toggle(product: AdminProduct) {
@@ -199,6 +267,28 @@ export default function CatalogManager({ initialCategories, initialProducts }: P
               <input className="size-5 accent-brand-primary" checked={draft.isActive} onChange={(event) => set("isActive", event.target.checked)} type="checkbox" />
               Mostrar este producto en el catálogo cuando su categoría esté activa.
             </label>
+            {editingId && (() => {
+              const product = products.find((item) => item.id === editingId);
+              if (!product) return null;
+              const preview = selectedImage?.previewUrl ?? product.image?.url;
+              return <section className="sm:col-span-2 rounded-2xl border border-border-subtle bg-surface-soft p-4" aria-label="Imagen del producto">
+                <h3 className="font-display text-lg font-semibold">Imagen del producto</h3>
+                <p className="mt-1 text-sm text-text-secondary">Una imagen por producto. JPG, PNG, WebP o HEIC/HEIF; se optimiza en este dispositivo antes de subirla.</p>
+                {preview ? <img className="mt-4 aspect-[4/5] w-36 rounded-xl border border-border-subtle bg-white object-cover" src={preview} alt={imageAltText || product.name} width="360" height="450" /> : <p className="mt-4 text-sm text-text-secondary">Este producto aún no tiene imagen.</p>}
+                <label className="mt-4 block text-sm font-semibold">Texto alternativo
+                  <input className="mt-2 min-h-11 w-full rounded-lg border border-border-subtle bg-white px-3 font-normal outline-none focus:border-brand-primary focus:ring-3 focus:ring-brand-primary/12" value={imageAltText} onChange={(event) => setImageAltText(event.target.value)} maxLength={240} placeholder={`Descripción breve de ${product.name}`} />
+                </label>
+                <label className="mt-4 inline-flex min-h-11 cursor-pointer items-center rounded-full border-[1.5px] border-brand-primary px-4 text-sm font-semibold text-brand-primary hover:bg-white">
+                  {processingImage ? "Preparando…" : selectedImage ? "Elegir otra fotografía" : product.image ? "Reemplazar fotografía" : "Seleccionar fotografía"}
+                  <input className="sr-only" type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif" disabled={processingImage || savingImage} onChange={(event) => { void selectImage(event.currentTarget.files?.[0]); event.currentTarget.value = ""; }} />
+                </label>
+                {selectedImage && <button className="ml-2 min-h-11 rounded-full px-4 text-sm font-semibold text-text-secondary hover:bg-white" type="button" onClick={() => setSelectedImage(null)}>Descartar selección</button>}
+                <div className="mt-4 flex flex-wrap gap-2">
+                  {selectedImage && <button className="min-h-11 rounded-full bg-brand-primary px-5 text-sm font-semibold text-white hover:bg-brand-primary-hover disabled:opacity-60" type="button" disabled={savingImage || processingImage || imageAltText.trim().length < 3} onClick={() => void saveImage(product)}>{savingImage ? "Guardando imagen…" : "Guardar imagen"}</button>}
+                  {product.image && <button className="min-h-11 rounded-full px-4 text-sm font-semibold text-brand-primary hover:bg-white disabled:opacity-60" type="button" disabled={savingImage} onClick={() => void unlinkImage(product)}>Desvincular imagen</button>}
+                </div>
+              </section>;
+            })()}
             <div className="sm:col-span-2 flex flex-wrap gap-3">
               <button className="min-h-11 rounded-full bg-brand-primary px-5 py-3 text-sm font-semibold text-white hover:bg-brand-primary-hover disabled:cursor-not-allowed disabled:bg-brand-primary-soft disabled:text-text-secondary" type="submit" disabled={saving || activeCategories.length === 0}>{saving ? "Guardando…" : editingId ? "Guardar cambios" : "Crear producto"}</button>
               {activeCategories.length === 0 && <p className="self-center text-sm text-text-secondary">Crea una categoría activa para añadir productos.</p>}
@@ -256,6 +346,7 @@ export default function CatalogManager({ initialCategories, initialProducts }: P
             const category = categoryById.get(product.category_id);
             const visible = product.is_active && product.availability_status !== "inactive" && category?.is_active;
             return <li className="relative rounded-[20px] border border-border-subtle bg-surface-card p-5 shadow-[0_4px_20px_-2px_rgba(134,54,93,0.05)]" key={product.id}>
+              {product.image?.url && <img className="mb-4 aspect-[4/5] w-full rounded-xl border border-border-subtle object-cover" src={product.image.url} alt={product.image.altText} width="480" height="600" loading="lazy" />}
               <p className="max-w-[60%] text-xs font-semibold tracking-[0.12em] text-text-secondary uppercase">{category?.name ?? "Categoría eliminada"}</p>
               <span className={`absolute right-5 top-5 inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-semibold ${badgeStyles[product.availability_status]}`}>
                 <svg aria-hidden="true" className="size-3.5 shrink-0" fill="none" viewBox="0 0 16 16" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">

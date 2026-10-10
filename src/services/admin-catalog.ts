@@ -18,7 +18,8 @@ export type AdminProduct = Pick<
   | "currency"
   | "availability_status"
   | "is_active"
->;
+> & { image: AdminProductImage | null };
+export type AdminProductImage = { storagePath: string; altText: string; url: string | null };
 export type AdminInventoryItem = Pick<InventoryRow, "product_id" | "quantity" | "updated_at">;
 
 type AdminSupabaseClient = SupabaseClient<Database>;
@@ -100,10 +101,70 @@ export async function getAdminCatalogData(supabase: AdminSupabaseClient) {
     throw new Error("No fue posible cargar el catálogo administrativo.");
   }
 
+  const products = productsResult.data;
+  const imagesResult = products.length
+    ? await supabase.from("product_images").select("product_id, storage_path, alt_text, sort_order").in("product_id", products.map((product) => product.id)).order("sort_order")
+    : { data: [], error: null };
+  if (imagesResult.error) throw new Error("No fue posible cargar las imagenes del catalogo.");
+  const imageByProduct = new Map<string, AdminProductImage>();
+  for (const image of imagesResult.data) {
+    if (imageByProduct.has(image.product_id)) continue;
+    const { data, error } = await supabase.storage.from("product-images").createSignedUrl(image.storage_path, 60 * 60);
+    imageByProduct.set(image.product_id, { storagePath: image.storage_path, altText: image.alt_text, url: error || !data ? null : data.signedUrl });
+  }
+
   return {
     categories: categoriesResult.data as AdminCategory[],
-    products: productsResult.data as AdminProduct[],
+    products: products.map((product) => ({ ...product, image: imageByProduct.get(product.id) ?? null })) as AdminProduct[],
   };
+}
+
+export async function replaceProductImage(supabase: AdminSupabaseClient, productId: string, file: File, altText: string) {
+  const { data: product, error: productError } = await supabase.from("products").select("id").eq("id", productId).maybeSingle();
+  if (productError || !product) throw new Error("No se encontro el producto que recibira la imagen.");
+  const { data: existingImages, error: imageReadError } = await supabase.from("product_images").select("id, storage_path").eq("product_id", productId).order("sort_order");
+  if (imageReadError) throw new Error("No fue posible consultar la imagen anterior.");
+  if (existingImages.length > 1) throw new Error("Este producto tiene varias imagenes registradas; resuelve esos registros antes de reemplazar la imagen unica.");
+
+  const storagePath = `products/${productId}/${crypto.randomUUID()}.${file.type === "image/webp" ? "webp" : "jpg"}`;
+  const { error: uploadError } = await supabase.storage.from("product-images").upload(storagePath, file, { contentType: file.type, cacheControl: "3600", upsert: false });
+  if (uploadError) throw new Error("No fue posible subir la nueva imagen. La imagen anterior sigue vinculada.");
+
+  const previous = existingImages[0];
+  const referenceResult = previous
+    ? await supabase.from("product_images").update({ storage_path: storagePath, alt_text: altText }).eq("id", previous.id).select("id").single()
+    : await supabase.from("product_images").insert({ product_id: productId, storage_path: storagePath, alt_text: altText, sort_order: 0 }).select("id").single();
+  if (referenceResult.error) {
+    const { data: recoveredReference, error: recoveryError } = await supabase.from("product_images").select("id").eq("storage_path", storagePath).maybeSingle();
+    if (recoveryError) throw new Error("No se pudo confirmar si la nueva referencia quedó guardada; el archivo nuevo se conserva para evitar romper el producto. Recarga y revisa la imagen.");
+    if (!recoveredReference) {
+      const { error: cleanupError } = await supabase.storage.from("product-images").remove([storagePath]);
+      throw new Error(cleanupError
+        ? "No se guardo la referencia ni se pudo limpiar el archivo nuevo. La imagen anterior sigue vinculada; solicita revision tecnica."
+        : "No se guardo la referencia de la imagen. La imagen anterior sigue vinculada.");
+    }
+  }
+
+  let warning: string | null = null;
+  if (previous) {
+    const { error: cleanupError } = await supabase.storage.from("product-images").remove([previous.storage_path]);
+    if (cleanupError) warning = "La nueva imagen ya está activa, pero el archivo anterior sigue en Storage y requiere limpieza.";
+  }
+  const { data: signed, error: signedError } = await supabase.storage.from("product-images").createSignedUrl(storagePath, 60 * 60);
+  if (signedError || !signed) warning = [warning, "La imagen quedó guardada, pero no se pudo preparar su vista previa. Recarga para comprobarla."].filter(Boolean).join(" ");
+  return { image: { storagePath, altText, url: signed?.signedUrl ?? null } satisfies AdminProductImage, warning };
+}
+
+export async function unlinkProductImage(supabase: AdminSupabaseClient, productId: string): Promise<string | null> {
+  const { data: images, error: readError } = await supabase.from("product_images").select("id, storage_path").eq("product_id", productId);
+  if (readError) throw new Error("No fue posible consultar la imagen del producto.");
+  if (images.length > 1) throw new Error("Este producto tiene varias imagenes registradas; resuelve esos registros antes de desvincular la imagen unica.");
+  const image = images[0];
+  if (!image) return null;
+  const { error: unlinkError } = await supabase.from("product_images").delete().eq("id", image.id);
+  if (unlinkError) throw new Error("No se pudo desvincular la imagen del producto.");
+  const { error: deleteError } = await supabase.storage.from("product-images").remove([image.storage_path]);
+  return deleteError ? "La imagen quedó desvinculada, pero el archivo sigue en Storage y requiere limpieza." : null;
 }
 
 export async function createCategory(supabase: AdminSupabaseClient, input: CategoryInput) {
@@ -141,7 +202,7 @@ export async function createProduct(supabase: AdminSupabaseClient, input: Produc
     throw new Error("No fue posible crear el producto.");
   }
 
-  return data as AdminProduct;
+  return { ...data, image: null } as AdminProduct;
 }
 
 export async function updateProduct(
@@ -167,7 +228,14 @@ export async function updateProduct(
     throw new Error("No fue posible actualizar el producto.");
   }
 
-  return data as AdminProduct;
+  return { ...data, image: await getAdminProductImage(supabase, id) } as AdminProduct;
+}
+
+async function getAdminProductImage(supabase: AdminSupabaseClient, productId: string): Promise<AdminProductImage | null> {
+  const { data, error } = await supabase.from("product_images").select("storage_path, alt_text").eq("product_id", productId).order("sort_order").limit(1).maybeSingle();
+  if (error || !data) return null;
+  const { data: signed, error: signedError } = await supabase.storage.from("product-images").createSignedUrl(data.storage_path, 60 * 60);
+  return { storagePath: data.storage_path, altText: data.alt_text, url: signedError || !signed ? null : signed.signedUrl };
 }
 
 export async function getAdminInventoryData(supabase: AdminSupabaseClient) {
