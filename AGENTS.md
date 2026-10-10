@@ -155,7 +155,7 @@ Cada producto debe comunicar claramente su disponibilidad. Los estados mínimos 
 
 La interfaz debe mostrar estados comprensibles como `Disponible`, `Por encargo`, `Agotado` e `Inactivo`, sin depender solo del color.
 
-El inventario permite a la propietaria saber qué productos tiene físicamente, cuántas unidades hay y cuáles debe solicitar al proveedor. No descontes inventario al crear una solicitud; resérvalo o descuéntalo únicamente en el punto de confirmación que se defina para el negocio.
+El inventario permite a la propietaria saber qué productos tiene físicamente, cuántas unidades hay y cuáles debe solicitar al proveedor. No descontes inventario al crear una solicitud. El momento para reservar o descontar existencias sigue pendiente de decisión del negocio: presenta las alternativas y espera autorización antes de implementar cualquiera.
 
 ---
 
@@ -298,19 +298,19 @@ La interfaz debe ser móvil primero, responsiva, accesible, limpia y rápida. Pr
 
 Usa el color de marca `#86365D` como primario: ciruela/rosa profundo y aterciopelado. Es el color de las acciones principales, elementos activos y énfasis de marca.
 
-| Uso | Token | Color |
-| --- | --- | --- |
-| Color principal | `brand-primary` | `#86365D` |
-| Principal en hover | `brand-primary-hover` | `#6E2B4A` |
-| Tinte suave del primario | `brand-primary-soft` | `#F5EBF0` |
-| Fondo de la aplicación | `surface` | `#FDF8F7` |
-| Superficies y tarjetas | `surface-card` | `#FFFFFF` |
-| Superficie rosada suave | `surface-soft` | `#FFF0F4` |
-| Borde y divisor | `border-subtle` | `#EEDFE5` |
-| Texto principal | `text-primary` | `#2C1A23` |
-| Texto secundario | `text-secondary` | `#6E5D66` |
-| Acento champán | `accent-gold` | `#E6C594` |
-| Acento rosa empolvado | `accent-rose` | `#D9A0B8` |
+| Uso                      | Token                 | Color     |
+| ------------------------ | --------------------- | --------- |
+| Color principal          | `brand-primary`       | `#86365D` |
+| Principal en hover       | `brand-primary-hover` | `#6E2B4A` |
+| Tinte suave del primario | `brand-primary-soft`  | `#F5EBF0` |
+| Fondo de la aplicación   | `surface`             | `#FDF8F7` |
+| Superficies y tarjetas   | `surface-card`        | `#FFFFFF` |
+| Superficie rosada suave  | `surface-soft`        | `#FFF0F4` |
+| Borde y divisor          | `border-subtle`       | `#EEDFE5` |
+| Texto principal          | `text-primary`        | `#2C1A23` |
+| Texto secundario         | `text-secondary`      | `#6E5D66` |
+| Acento champán           | `accent-gold`         | `#E6C594` |
+| Acento rosa empolvado    | `accent-rose`         | `#D9A0B8` |
 
 Los acentos dorados y rosa son decorativos o secundarios; no deben competir con el color principal ni reemplazarlo como acción primaria.
 
@@ -318,11 +318,11 @@ Los acentos dorados y rosa son decorativos o secundarios; no deben competir con 
 
 No comuniques disponibilidad solo con color: incluye siempre icono y texto.
 
-| Estado | Texto | Fondo | Texto/borde |
-| --- | --- | --- | --- |
-| `in_stock` | Disponible | `#E8F5E9` | `#2D6A4F` / `#C8E6C9` |
-| `on_order` | Por encargo | `#FEF3C7` | `#8A5A12` / `#FDE68A` |
-| `out_of_stock` | Agotado | `#F0ECEE` | `#6B5E65` / `#E2D9DD` |
+| Estado         | Texto       | Fondo     | Texto/borde           |
+| -------------- | ----------- | --------- | --------------------- |
+| `in_stock`     | Disponible  | `#E8F5E9` | `#2D6A4F` / `#C8E6C9` |
+| `on_order`     | Por encargo | `#FEF3C7` | `#8A5A12` / `#FDE68A` |
+| `out_of_stock` | Agotado     | `#F0ECEE` | `#6B5E65` / `#E2D9DD` |
 
 ## Tipografía
 
@@ -333,16 +333,16 @@ Usa una combinación editorial y funcional:
 
 Escala base:
 
-| Estilo | Fuente | Tamaño / interlineado |
-| --- | --- | --- |
-| Display escritorio | Playfair Display, 600 | `48px / 56px` |
-| Display móvil | Playfair Display, 600 | `34px / 42px` |
-| Encabezado grande escritorio | Playfair Display, 600 | `32px / 40px` |
-| Encabezado grande móvil | Playfair Display, 600 | `26px / 34px` |
-| Título de producto | Playfair Display, 500 | `20px / 28px` |
-| Título funcional / precio | Plus Jakarta Sans, 600 | `18px / 26px` |
-| Cuerpo | Plus Jakarta Sans, 400 | `14px / 22px` |
-| Etiqueta | Plus Jakarta Sans, 600 | `12px / 16px` |
+| Estilo                       | Fuente                 | Tamaño / interlineado |
+| ---------------------------- | ---------------------- | --------------------- |
+| Display escritorio           | Playfair Display, 600  | `48px / 56px`         |
+| Display móvil                | Playfair Display, 600  | `34px / 42px`         |
+| Encabezado grande escritorio | Playfair Display, 600  | `32px / 40px`         |
+| Encabezado grande móvil      | Playfair Display, 600  | `26px / 34px`         |
+| Título de producto           | Playfair Display, 500  | `20px / 28px`         |
+| Título funcional / precio    | Plus Jakarta Sans, 600 | `18px / 26px`         |
+| Cuerpo                       | Plus Jakarta Sans, 400 | `14px / 22px`         |
+| Etiqueta                     | Plus Jakarta Sans, 600 | `12px / 16px`         |
 
 Los precios deben usar Plus Jakarta Sans en semibold para conservar legibilidad numérica. Los labels de categoría pueden usar mayúsculas discretas, con espaciado de letras moderado.
 
@@ -513,3 +513,44 @@ Diseña de modo que estas capacidades puedan añadirse después, sin implementar
 Construye únicamente lo pedido para la fase actual. No amplíes el alcance de manera automática.
 
 Si una ambigüedad afecta la arquitectura o el modelo de datos, pide aclaración antes de adoptar una suposición importante.
+
+---
+
+# Protocolo permanente de trabajo con Codex
+
+Estas reglas aplican a todos los cambios futuros. El plan de etapas y los prompts de cada tarea se gestionan por separado: no avances a una etapa o fase distinta sin autorización expresa.
+
+## Verificación antes de editar
+
+1. Lee `AGENTS.md` e inspecciona el estado actual del repositorio, incluidos `git status` y la rama activa.
+2. Si estás en `main` o `master`, no edites archivos: solicita cambiar a una rama de trabajo. No sobrescribas cambios locales preexistentes.
+3. Localiza los archivos y contratos relacionados con la tarea; distingue lo que ya existe de lo que falta.
+4. Explica brevemente el diagnóstico, la propuesta mínima y los riesgos antes de una modificación importante.
+5. No presupongas que el despliegue correcto en Vercel prueba que RLS, Storage o la autenticación administrativa estén configurados.
+6. Diferencia siempre lo **verificado en código/migraciones**, lo **comprobado en Supabase remoto** y lo **pendiente de comprobación**. No inventes resultados de pruebas ni permisos.
+
+## Cambios de esquema, permisos y configuración remota
+
+- Inspecciona antes las migraciones, los esquemas y las políticas existentes; preserva tablas y datos.
+- Si hace falta una migración o modificación de políticas RLS/Storage, **prepara y presenta** el SQL, el motivo, los efectos y los riesgos antes de aplicarlo. Espera autorización explícita para ejecutar cambios sobre cualquier base o servicio remoto.
+- No uses desactivación de RLS ni claves privilegiadas en el cliente como solución a errores de autorización.
+- Para acciones administrativas, verifica los permisos en la capa que ejecuta la operación y en las políticas correspondientes; ocultar botones no constituye autorización.
+- Examina los nombres y la presencia de variables de entorno sin exponer valores secretos.
+
+## Imágenes de productos
+
+- Almacena los archivos en Supabase Storage, nunca como binarios en PostgreSQL. Guarda en las tablas solo rutas y metadatos necesarios, siguiendo el modelo existente.
+- Antes de introducir tablas nuevas o soporte para varias imágenes, comprueba lo que ya admite el proyecto. Presenta los cambios de esquema si resultan necesarios.
+- Prefiere optimización en el navegador antes de subir: valida tipo y tamaño, conserva orientación y relación de aspecto, evita ampliaciones y compresión visualmente agresiva. Evalúa WebP y soporte real de HEIC/HEIF según navegadores y dependencias existentes.
+- Para fotografía de joyería y velas, prefiere encuadres 4:5; para cosméticos, 1:1 si conviene. Estos son criterios de presentación, no permiso para recortar productos importantes. Conserva las proporciones y evita deformaciones.
+- Decide entre miniaturas preprocesadas y transformaciones de Storage según soporte/coste existentes; no dupliques soluciones sin justificarlo.
+- Las tarjetas deben ofrecer tamaño de imagen reservado, carga eficiente, texto alternativo significativo y estado visual cuando falte o falle una fotografía.
+- Permite escribir o eliminar archivos solo a administradores efectivamente autorizados. En reemplazos, conserva el archivo anterior hasta confirmar la nueva referencia y considera errores parciales de carga/guardado.
+
+## Desarrollo incremental y cierre de fase
+
+- Ejecuta únicamente el prompt o fase autorizada; no inicies la siguiente por iniciativa propia.
+- Usa `pnpm` y las verificaciones existentes apropiadas (tipos, lint, tests, build). Si alguna no está disponible o falla por un problema previo, repórtalo sin ocultarlo.
+- No ejecutes `git add`, `git commit`, `git push` ni despliegues, salvo autorización expresa; deja los cambios revisables y sin staging.
+- Al terminar, informa: diagnóstico, trabajo realizado, archivos afectados, resultados reales de las verificaciones, SQL preparado o configuración externa pendiente, riesgos, cómo revisar manualmente, y siguiente paso. Sugiere un mensaje de commit en inglés sin ejecutarlo.
+- Si una decisión afecta reglas del negocio, datos, permisos o costes, presenta opciones concretas y espera una respuesta antes de implementarla.
