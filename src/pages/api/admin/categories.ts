@@ -1,5 +1,5 @@
 import type { APIRoute } from "astro";
-import { createCategory, requireAdmin } from "../../../services/admin-catalog";
+import { CategoryAlreadyExistsError, createCategory, requireAdmin } from "../../../services/admin-catalog";
 import { categoryInputSchema } from "../../../validations/admin-catalog";
 import { createSupabaseServerClient } from "../../../lib/supabase/server-client";
 
@@ -23,7 +23,10 @@ export const POST: APIRoute = async (context) => {
   try {
     const category = await createCategory(supabase, payload.data);
     return json({ category }, responseHeaders, 201);
-  } catch {
+  } catch (error) {
+    if (error instanceof CategoryAlreadyExistsError) {
+      return json({ error: error.message }, responseHeaders, 409);
+    }
     return json({ error: "No fue posible crear la categoría." }, responseHeaders, 500);
   }
 };

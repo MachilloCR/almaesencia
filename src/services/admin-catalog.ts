@@ -18,7 +18,8 @@ export type AdminProduct = Pick<
   | "currency"
   | "availability_status"
   | "is_active"
->;
+> & { categoryIds: string[]; image: AdminProductImage | null };
+export type AdminProductImage = { storagePath: string; altText: string; url: string | null };
 export type AdminInventoryItem = Pick<InventoryRow, "product_id" | "quantity" | "updated_at">;
 
 type AdminSupabaseClient = SupabaseClient<Database>;
@@ -100,20 +101,103 @@ export async function getAdminCatalogData(supabase: AdminSupabaseClient) {
     throw new Error("No fue posible cargar el catálogo administrativo.");
   }
 
+  const products = productsResult.data;
+  const associationsResult = products.length
+    ? await supabase.from("product_categories").select("product_id, category_id").in("product_id", products.map((product) => product.id))
+    : { data: [], error: null };
+  if (associationsResult.error) throw new Error("No fue posible cargar las categorías de los productos.");
+  const categoryIdsByProduct = new Map<string, string[]>();
+  for (const association of associationsResult.data) {
+    const ids = categoryIdsByProduct.get(association.product_id) ?? [];
+    ids.push(association.category_id);
+    categoryIdsByProduct.set(association.product_id, ids);
+  }
+  const imagesResult = products.length
+    ? await supabase.from("product_images").select("product_id, storage_path, alt_text, sort_order").in("product_id", products.map((product) => product.id)).order("sort_order")
+    : { data: [], error: null };
+  if (imagesResult.error) throw new Error("No fue posible cargar las imagenes del catalogo.");
+  const imageByProduct = new Map<string, AdminProductImage>();
+  for (const image of imagesResult.data) {
+    if (imageByProduct.has(image.product_id)) continue;
+    const { data, error } = await supabase.storage.from("product-images").createSignedUrl(image.storage_path, 60 * 60);
+    imageByProduct.set(image.product_id, { storagePath: image.storage_path, altText: image.alt_text, url: error || !data ? null : data.signedUrl });
+  }
+
   return {
     categories: categoriesResult.data as AdminCategory[],
-    products: productsResult.data as AdminProduct[],
+    products: products.map((product) => ({
+      ...product,
+      categoryIds: [product.category_id, ...(categoryIdsByProduct.get(product.id) ?? []).filter((id) => id !== product.category_id)],
+      image: imageByProduct.get(product.id) ?? null,
+    })) as AdminProduct[],
   };
 }
 
+export async function replaceProductImage(supabase: AdminSupabaseClient, productId: string, file: File, altText: string) {
+  const { data: product, error: productError } = await supabase.from("products").select("id").eq("id", productId).maybeSingle();
+  if (productError || !product) throw new Error("No se encontro el producto que recibira la imagen.");
+  const { data: existingImages, error: imageReadError } = await supabase.from("product_images").select("id, storage_path").eq("product_id", productId).order("sort_order");
+  if (imageReadError) throw new Error("No fue posible consultar la imagen anterior.");
+  if (existingImages.length > 1) throw new Error("Este producto tiene varias imagenes registradas; resuelve esos registros antes de reemplazar la imagen unica.");
+
+  const storagePath = `products/${productId}/${crypto.randomUUID()}.${file.type === "image/webp" ? "webp" : "jpg"}`;
+  const { error: uploadError } = await supabase.storage.from("product-images").upload(storagePath, file, { contentType: file.type, cacheControl: "3600", upsert: false });
+  if (uploadError) throw new Error("No fue posible subir la nueva imagen. La imagen anterior sigue vinculada.");
+
+  const previous = existingImages[0];
+  const referenceResult = previous
+    ? await supabase.from("product_images").update({ storage_path: storagePath, alt_text: altText }).eq("id", previous.id).select("id").single()
+    : await supabase.from("product_images").insert({ product_id: productId, storage_path: storagePath, alt_text: altText, sort_order: 0 }).select("id").single();
+  if (referenceResult.error) {
+    const { data: recoveredReference, error: recoveryError } = await supabase.from("product_images").select("id").eq("storage_path", storagePath).maybeSingle();
+    if (recoveryError) throw new Error("No se pudo confirmar si la nueva referencia quedó guardada; el archivo nuevo se conserva para evitar romper el producto. Recarga y revisa la imagen.");
+    if (!recoveredReference) {
+      const { error: cleanupError } = await supabase.storage.from("product-images").remove([storagePath]);
+      throw new Error(cleanupError
+        ? "No se guardo la referencia ni se pudo limpiar el archivo nuevo. La imagen anterior sigue vinculada; solicita revision tecnica."
+        : "No se guardo la referencia de la imagen. La imagen anterior sigue vinculada.");
+    }
+  }
+
+  let warning: string | null = null;
+  if (previous) {
+    const { error: cleanupError } = await supabase.storage.from("product-images").remove([previous.storage_path]);
+    if (cleanupError) warning = "La nueva imagen ya está activa, pero el archivo anterior sigue en Storage y requiere limpieza.";
+  }
+  const { data: signed, error: signedError } = await supabase.storage.from("product-images").createSignedUrl(storagePath, 60 * 60);
+  if (signedError || !signed) warning = [warning, "La imagen quedó guardada, pero no se pudo preparar su vista previa. Recarga para comprobarla."].filter(Boolean).join(" ");
+  return { image: { storagePath, altText, url: signed?.signedUrl ?? null } satisfies AdminProductImage, warning };
+}
+
+export async function unlinkProductImage(supabase: AdminSupabaseClient, productId: string): Promise<string | null> {
+  const { data: images, error: readError } = await supabase.from("product_images").select("id, storage_path").eq("product_id", productId);
+  if (readError) throw new Error("No fue posible consultar la imagen del producto.");
+  if (images.length > 1) throw new Error("Este producto tiene varias imagenes registradas; resuelve esos registros antes de desvincular la imagen unica.");
+  const image = images[0];
+  if (!image) return null;
+  const { error: unlinkError } = await supabase.from("product_images").delete().eq("id", image.id);
+  if (unlinkError) throw new Error("No se pudo desvincular la imagen del producto.");
+  const { error: deleteError } = await supabase.storage.from("product-images").remove([image.storage_path]);
+  return deleteError ? "La imagen quedó desvinculada, pero el archivo sigue en Storage y requiere limpieza." : null;
+}
+
 export async function createCategory(supabase: AdminSupabaseClient, input: CategoryInput) {
-  const slug = await createUniqueSlug(supabase, "categories", input.name);
+  const normalizedName = input.name.trim().replace(/\s+/g, " ");
+  const { data: existingCategories, error: existingError } = await supabase.from("categories").select("id, name");
+  if (existingError) throw new Error("No fue posible validar el nombre de la categoría.");
+  const canonicalName = normalizedName.toLocaleLowerCase("es");
+  if (existingCategories.some((category) => category.name.trim().replace(/\s+/g, " ").toLocaleLowerCase("es") === canonicalName)) {
+    throw new CategoryAlreadyExistsError();
+  }
+
+  const slug = await createUniqueSlug(supabase, "categories", normalizedName);
   const { data, error } = await supabase
     .from("categories")
-    .insert({ ...input, slug })
+    .insert({ ...input, name: normalizedName, slug })
     .select("id, name, slug, description, is_active")
     .single();
 
+  if (error?.code === "23505") throw new CategoryAlreadyExistsError();
   if (error) {
     throw new Error("No fue posible crear la categoría.");
   }
@@ -121,27 +205,31 @@ export async function createCategory(supabase: AdminSupabaseClient, input: Categ
   return data as AdminCategory;
 }
 
+export class CategoryAlreadyExistsError extends Error {
+  constructor() {
+    super("Ya existe una categoría con ese nombre.");
+    this.name = "CategoryAlreadyExistsError";
+  }
+}
+
 export async function createProduct(supabase: AdminSupabaseClient, input: ProductInput) {
   const slug = await createUniqueSlug(supabase, "products", input.name);
-  const { data, error } = await supabase
-    .from("products")
-    .insert({
-      category_id: input.categoryId,
-      name: input.name,
-      slug,
-      description: input.description,
-      price: input.price,
-      availability_status: input.availabilityStatus,
-      is_active: input.isActive,
-    })
-    .select("id, category_id, name, slug, description, price, currency, availability_status, is_active")
-    .single();
+  const { data, error } = await supabase.rpc("save_admin_product", {
+    p_product_id: null,
+    p_category_ids: input.categoryIds,
+    p_name: input.name,
+    p_slug: slug,
+    p_description: input.description,
+    p_price: input.price,
+    p_availability_status: input.availabilityStatus,
+    p_is_active: input.isActive,
+  });
 
-  if (error) {
+  if (error || !data?.[0]) {
     throw new Error("No fue posible crear el producto.");
   }
 
-  return data as AdminProduct;
+  return { ...data[0], categoryIds: input.categoryIds, image: null } as AdminProduct;
 }
 
 export async function updateProduct(
@@ -149,25 +237,29 @@ export async function updateProduct(
   id: string,
   input: ProductInput,
 ) {
-  const { data, error } = await supabase
-    .from("products")
-    .update({
-      category_id: input.categoryId,
-      name: input.name,
-      description: input.description,
-      price: input.price,
-      availability_status: input.availabilityStatus,
-      is_active: input.isActive,
-    })
-    .eq("id", id)
-    .select("id, category_id, name, slug, description, price, currency, availability_status, is_active")
-    .single();
+  const { data, error } = await supabase.rpc("save_admin_product", {
+    p_product_id: id,
+    p_category_ids: input.categoryIds,
+    p_name: input.name,
+    p_slug: "",
+    p_description: input.description,
+    p_price: input.price,
+    p_availability_status: input.availabilityStatus,
+    p_is_active: input.isActive,
+  });
 
-  if (error) {
+  if (error || !data?.[0]) {
     throw new Error("No fue posible actualizar el producto.");
   }
 
-  return data as AdminProduct;
+  return { ...data[0], categoryIds: input.categoryIds, image: await getAdminProductImage(supabase, id) } as AdminProduct;
+}
+
+async function getAdminProductImage(supabase: AdminSupabaseClient, productId: string): Promise<AdminProductImage | null> {
+  const { data, error } = await supabase.from("product_images").select("storage_path, alt_text").eq("product_id", productId).order("sort_order").limit(1).maybeSingle();
+  if (error || !data) return null;
+  const { data: signed, error: signedError } = await supabase.storage.from("product-images").createSignedUrl(data.storage_path, 60 * 60);
+  return { storagePath: data.storage_path, altText: data.alt_text, url: signedError || !signed ? null : signed.signedUrl };
 }
 
 export async function getAdminInventoryData(supabase: AdminSupabaseClient) {

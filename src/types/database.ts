@@ -150,6 +150,17 @@ export type Database = {
           sort_order?: number;
         }
       >;
+      product_categories: Table<
+        {
+          category_id: string;
+          created_at: string;
+          product_id: string;
+        },
+        {
+          category_id: string;
+          product_id: string;
+        }
+      >;
       products: Table<
         {
           availability_status: ProductAvailabilityStatus;
@@ -199,6 +210,20 @@ export type Database = {
         Returns: { order_id: string; order_number: string }[];
       };
       is_admin: { Args: Record<string, never>; Returns: boolean };
+      can_view_product_category: { Args: { p_category_id: string; p_product_id: string }; Returns: boolean };
+      save_admin_product: {
+        Args: {
+          p_product_id: string | null;
+          p_category_ids: string[];
+          p_name: string;
+          p_slug: string;
+          p_description: string | null;
+          p_price: number;
+          p_availability_status: ProductAvailabilityStatus;
+          p_is_active: boolean;
+        };
+        Returns: Database["public"]["Tables"]["products"]["Row"][];
+      };
     };
     Enums: {
       fulfillment_status: FulfillmentStatus;
