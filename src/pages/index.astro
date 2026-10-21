@@ -2,13 +2,14 @@
 import CartLink from "../components/catalog/CartLink";
 import CatalogProductGrid from "../components/catalog/CatalogProductGrid";
 import BaseLayout from "../layouts/BaseLayout.astro";
+import { getPublicSupabaseClient } from "../lib/supabase/public-client";
 import { getPublicCatalogData } from "../services/public-catalog";
 
-const { categories, products } = await getPublicCatalogData(Astro.locals.supabase);
+const { categories, products } = await getPublicCatalogData(getPublicSupabaseClient());
 ---
 
 <BaseLayout title="Alma Esencia CR | Catálogo artesanal" description="Descubre joyería, productos Farmasi y velas personalizadas de Alma Esencia CR.">
-  <header class="relative isolate overflow-hidden bg-surface bg-cover bg-center" style="background-image: url(/catalogo-hero-propietaria-hq.webp);">
+  <header class="catalog-hero relative isolate overflow-hidden bg-surface bg-cover bg-center" style="background-image: url(/catalogo-hero-propietaria-hq.webp);">
     <nav class="mx-auto flex max-w-7xl items-center justify-between px-4 py-5 sm:px-8 lg:px-12" aria-label="Navegación principal">
       <a href="/"><img class="h-10 w-auto object-contain sm:h-12" src="/logo-almaesencia.png" alt="Alma Esencia CR" /></a>
       <CartLink client:load />

@@ -34,6 +34,22 @@
   }
 }
 
+.catalog-hero {
+  background-position: center center;
+}
+
+@media (min-width: 768px) and (max-width: 1023px) {
+  .catalog-hero {
+    background-position: 35% center;
+  }
+}
+
+@media (max-width: 767px) {
+  .catalog-hero {
+    background-position: 25% center;
+  }
+}
+
 @layer utilities {
   .scrollbar-none {
     scrollbar-width: none;

@@ -48,7 +48,7 @@ export default function CatalogProductGrid({ categories, products }: Props) {
           styles: { title: "text-white!", description: "text-white/80!" },
         }}
       />
-      <div className="mb-8 rounded-[20px] border border-border-subtle bg-surface-card p-4 sm:p-5">
+      <div className="mb-8 min-w-0 rounded-[20px] border border-border-subtle bg-surface-card p-4 sm:p-5">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <label className="block w-full text-xs font-semibold text-text-secondary sm:max-w-md">Buscar producto
             <input className="mt-2 min-h-11 w-full rounded-xl border border-border-subtle bg-white px-4 text-sm font-normal text-text-primary outline-none placeholder:text-text-secondary/70 focus:border-brand-primary focus:ring-3 focus:ring-brand-primary/12" type="search" placeholder="Nombre, descripción o categoría" value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} />
@@ -79,16 +79,21 @@ export default function CatalogProductGrid({ categories, products }: Props) {
           {hasFilters && <button className="mt-4 min-h-11 rounded-full px-4 text-sm font-semibold text-brand-primary hover:bg-brand-primary-soft" type="button" onClick={() => { setSearchQuery(""); setCategoryFilter("all"); setAvailabilityFilter("all"); }}>Limpiar filtros</button>}
         </div>
       ) : (
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 sm:gap-5 lg:grid-cols-4 lg:gap-6">
-        {filteredProducts.map((product) => {
+      <div className="grid w-full min-w-0 grid-cols-2 gap-4 sm:grid-cols-3 sm:gap-5 lg:grid-cols-4 lg:gap-6">
+        {filteredProducts.map((product, index) => {
           const categoryNames = product.categoryIds.map((categoryId) => categoriesById.get(categoryId)?.name).filter((name): name is string => Boolean(name));
           const status = availability[product.availability_status];
           const canAdd = product.availability_status !== "out_of_stock" && product.availability_status !== "inactive";
+          const isCosmetics = categoryNames.some((name) => /cosm[eé]t|maquillaje|farmasi/i.test(name));
 
           return (
-            <article className="group w-full overflow-hidden rounded-[20px] border border-border-subtle bg-surface-card shadow-[0_4px_20px_-2px_rgba(134,54,93,0.05)] transition duration-300 hover:-translate-y-1 hover:border-accent-rose hover:shadow-[0_12px_28px_-4px_rgba(134,54,93,0.10)] motion-reduce:transform-none motion-reduce:transition-none" key={product.id}>
-              <div className="relative aspect-[4/5] overflow-hidden bg-gradient-to-br from-surface-soft via-brand-primary-soft to-[#F6E4D8]">
-                {product.image?.url && !failedImageIds.has(product.id) ? <img className="absolute inset-0 size-full object-cover transition-transform duration-300 group-hover:scale-[1.03] motion-reduce:transition-none motion-reduce:group-hover:scale-100" src={product.image.url} alt={product.image.altText} width="640" height="800" loading="lazy" onError={() => setFailedImageIds((current) => new Set(current).add(product.id))} /> : <div className="absolute inset-0 transition-transform duration-300 group-hover:scale-[1.03] motion-reduce:transition-none motion-reduce:group-hover:scale-100">
+            <article className="group w-full min-w-0 overflow-hidden rounded-[20px] border border-border-subtle bg-surface-card shadow-[0_4px_20px_-2px_rgba(134,54,93,0.05)] transition duration-300 hover:-translate-y-1 hover:border-accent-rose hover:shadow-[0_12px_28px_-4px_rgba(134,54,93,0.10)] motion-reduce:transform-none motion-reduce:transition-none" key={product.id}>
+              <div className={`relative ${isCosmetics ? "aspect-square" : "aspect-[4/5]"} overflow-hidden bg-gradient-to-br from-surface-soft via-brand-primary-soft to-[#F6E4D8]`}>
+                {product.image?.url && !failedImageIds.has(product.id) ? (
+                  <div className="absolute inset-2 overflow-hidden rounded-xl">
+                    <img className="size-full object-contain transition-transform duration-300 group-hover:scale-[1.03] motion-reduce:transition-none motion-reduce:group-hover:scale-100" src={product.image.url} alt={product.image.altText || product.name} width="640" height={isCosmetics ? "640" : "800"} loading={index < 4 ? "eager" : "lazy"} onError={() => setFailedImageIds((current) => new Set(current).add(product.id))} />
+                  </div>
+                ) : <div className="absolute inset-0 transition-transform duration-300 group-hover:scale-[1.03] motion-reduce:transition-none motion-reduce:group-hover:scale-100">
                   <div className="absolute inset-4 flex items-end rounded-xl border border-white/70 bg-white/45 p-4 backdrop-blur-sm">
                     <p className="font-display text-xl italic text-brand-primary/75">Alma Esencia CR</p>
                   </div>
@@ -102,11 +107,11 @@ export default function CatalogProductGrid({ categories, products }: Props) {
                   {status.label}
                 </span>
               </div>
-              <div className="px-3 py-3 sm:px-4 sm:py-4">
+              <div className="min-w-0 px-3 py-3 sm:px-4 sm:py-4">
                 <p className="line-clamp-2 min-h-8 text-xs font-semibold tracking-[0.12em] text-text-secondary uppercase">{categoryNames.join(" · ")}</p>
                 <h3 className="mt-2 truncate font-display text-lg font-medium text-text-primary sm:text-xl" title={product.name}>{product.name}</h3>
-                <div className="mt-3 flex items-center justify-between gap-2">
-                  <div>
+                <div className="mt-3 flex min-w-0 items-center justify-between gap-2">
+                  <div className="min-w-0">
                     <p className="text-base font-semibold text-text-primary sm:text-lg">{formatPrice(Number(product.price), product.currency)}</p>
                     <p className="mt-0.5 text-xs text-text-secondary">Precio estimado</p>
                   </div>
