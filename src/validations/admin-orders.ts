@@ -12,6 +12,8 @@ export const orderAdminNotesUpdateSchema = z.object({
   adminNotes: z.string().trim().max(2000),
 });
 
+export const orderHistoryQuerySchema = z.object({ orderId: z.uuid() });
+
 export const orderPaymentSchema = z.object({
   orderId: z.uuid(),
   amount: z.number().positive().max(9_999_999_999.99),

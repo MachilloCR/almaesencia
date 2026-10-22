@@ -12,17 +12,19 @@ if (profile?.role !== "admin") {
   return Astro.redirect("/admin/login?error=unauthorized");
 }
 
-const [ordersResult, itemsResult, paymentsResult] = await Promise.all([
+const [ordersResult, itemsResult, paymentsResult, historyResult] = await Promise.all([
   supabase.from("orders").select("id, order_number, customer_name, customer_phone, estimated_total, confirmed_total, currency, order_status, procurement_status, fulfillment_status, payment_status, admin_notes, created_at").order("created_at", { ascending: false }),
   supabase.from("order_items").select("order_id, product_name_snapshot, quantity, unit_price_snapshot"),
   supabase.from("order_payments").select("id, order_id, amount, payment_method, note, received_at").order("received_at", { ascending: false }),
+  supabase.from("order_status_history").select("id, order_id, status_type, previous_value, next_value, note, created_at, changed_by").order("created_at", { ascending: false }),
 ]);
-const ordersLoadError = ordersResult.error || itemsResult.error || paymentsResult.error;
+const ordersLoadError = ordersResult.error || itemsResult.error || paymentsResult.error || historyResult.error;
 if (ordersLoadError) {
   console.error("No fue posible cargar los datos administrativos de pedidos", {
     orders: ordersResult.error ? { code: ordersResult.error.code, message: ordersResult.error.message } : null,
     items: itemsResult.error ? { code: itemsResult.error.code, message: itemsResult.error.message } : null,
     payments: paymentsResult.error ? { code: paymentsResult.error.code, message: paymentsResult.error.message } : null,
+    history: historyResult.error ? { code: historyResult.error.code, message: historyResult.error.message } : null,
   });
 }
 
@@ -30,6 +32,7 @@ const orders = (ordersResult.data ?? []).map((order) => ({
   ...order,
   items: (itemsResult.data ?? []).filter((item) => item.order_id === order.id),
   payments: (paymentsResult.data ?? []).filter((payment) => payment.order_id === order.id),
+  history: (historyResult.data ?? []).filter((change) => change.order_id === order.id),
 }));
 ---
 

@@ -10,6 +10,16 @@ type Payment = {
   note: string | null;
   received_at: string;
 };
+type StatusHistory = {
+  id: string;
+  order_id: string;
+  status_type: "order" | "procurement" | "fulfillment" | "payment" | string;
+  previous_value: string | null;
+  next_value: string;
+  note: string | null;
+  created_at: string;
+  changed_by: string | null;
+};
 type Order = {
   id: string;
   order_number: string;
@@ -26,6 +36,7 @@ type Order = {
   created_at: string;
   items: Item[];
   payments: Payment[];
+  history: StatusHistory[];
 };
 type Props = { initialOrders: Order[] };
 type StatusKey = "order_status" | "procurement_status" | "fulfillment_status";
@@ -44,12 +55,12 @@ type PaymentResponse = {
 
 const fields: { key: StatusKey; label: string; values: string[] }[] = [
   { key: "order_status", label: "Pedido", values: ["pending_review", "confirmed", "completed", "cancelled"] },
-  { key: "procurement_status", label: "Abastecimiento", values: ["not_required", "ordered", "pending_supplier", "received"] },
+  { key: "procurement_status", label: "Abastecimiento", values: ["not_required", "pending_supplier", "ordered", "received"] },
   { key: "fulfillment_status", label: "Entrega", values: ["pending", "ready", "delivered"] },
 ];
 const labels: Record<string, string> = {
   pending_review: "Pendiente de revisión", confirmed: "Confirmado", cancelled: "Cancelado", completed: "Completado",
-  not_required: "No requerido", pending_supplier: "Pendiente de proveedor", ordered: "Solicitado", received: "Recibido",
+  not_required: "No requerido", pending_supplier: "Por solicitar", ordered: "Solicitado al proveedor", received: "Recibido",
   pending: "Pendiente", ready: "Listo", delivered: "Entregado", partial: "Abono parcial", paid: "Pagado",
   cash: "Efectivo", sinpe_movil: "SINPE Móvil", bank_transfer: "Transferencia bancaria", other: "Otro",
 };
@@ -85,14 +96,33 @@ function nextAction(order: Order, paid: number) {
   if (order.order_status === "completed") return "Pedido finalizado";
   if (order.confirmed_total === null) return "Confirmar precio final";
   if (order.order_status === "pending_review") return "Confirmar condiciones con el cliente";
-  if (order.procurement_status === "pending_supplier") return "Esperando al proveedor";
-  if (order.procurement_status === "ordered") return "Registrar recepción del proveedor";
+  if (order.procurement_status === "pending_supplier") return "Solicitar productos al proveedor";
+  if (order.procurement_status === "ordered") return "Esperando recepción del proveedor";
   if (order.fulfillment_status === "pending") return order.procurement_status === "not_required" || order.procurement_status === "received" ? "Preparar entrega" : "Coordinar abastecimiento";
   if (paid < order.confirmed_total) return "Registrar pago pendiente";
   if (order.fulfillment_status === "ready") return "Coordinar entrega";
   if (order.fulfillment_status === "delivered") return "Marcar pedido completado";
   return "Pedido en proceso";
 }
+
+function statusWarnings(order: Order) {
+  const warnings: string[] = [];
+  const deliveryStarted = order.fulfillment_status === "ready" || order.fulfillment_status === "delivered";
+  if (deliveryStarted && order.order_status === "pending_review") {
+    warnings.push("La entrega avanzó, pero el pedido sigue pendiente de revisión.");
+  }
+  if (deliveryStarted && ["pending_supplier", "ordered"].includes(order.procurement_status)) {
+    warnings.push("La entrega está marcada como lista o entregada, pero aún hay productos por gestionar con el proveedor.");
+  }
+  if (order.fulfillment_status === "delivered" && order.payment_status !== "paid") {
+    warnings.push("El pedido figura como entregado y todavía tiene saldo pendiente.");
+  }
+  return warnings;
+}
+
+const historyTypeLabels: Record<string, string> = {
+  order: "Pedido", procurement: "Abastecimiento", fulfillment: "Entrega", payment: "Pago",
+};
 
 function whatsappUrl(order: Order) {
   const phone = order.customer_phone.replace(/\D/g, "");
@@ -154,6 +184,16 @@ export default function OrderManager({ initialOrders }: Props) {
     }));
   }
 
+  async function refreshOrderHistory(orderId: string) {
+    try {
+      const result = await fetch(`/api/admin/orders?orderId=${encodeURIComponent(orderId)}`)
+        .then(response => readResponse<{ history: StatusHistory[] }>(response));
+      setOrders(current => current.map(order => order.id === orderId ? { ...order, history: result.history } : order));
+    } catch {
+      // El cambio principal ya se guardó; el historial se volverá a cargar al abrir Pedidos.
+    }
+  }
+
   async function saveStatuses(order: Order) {
     const draft = statusDrafts[order.id];
     if (!draft) return;
@@ -168,6 +208,7 @@ export default function OrderManager({ initialOrders }: Props) {
       );
       setOrders(current => current.map(item => item.id === order.id ? { ...item, ...result.order } : item));
       setStatusDrafts(current => { const next = { ...current }; delete next[order.id]; return next; });
+      await refreshOrderHistory(order.id);
     } catch { /* Sileo muestra el error. */ } finally { setSaving(null); }
   }
 
@@ -188,6 +229,7 @@ export default function OrderManager({ initialOrders }: Props) {
       );
       setOrders(current => current.map(item => item.id === order.id ? { ...item, ...result.order } : item));
       setTotalDrafts(current => ({ ...current, [order.id]: String(result.order.confirmed_total) }));
+      await refreshOrderHistory(order.id);
     } catch { /* Sileo muestra el error. */ } finally { setSaving(null); }
   }
 
@@ -209,6 +251,7 @@ export default function OrderManager({ initialOrders }: Props) {
       setOrders(current => current.map(item => item.id === order.id ? { ...item, payment_status: result.payment.payment_status, payments: [payment, ...item.payments] } : item));
       setAmountDrafts(current => ({ ...current, [order.id]: "" }));
       setNoteDrafts(current => ({ ...current, [order.id]: "" }));
+      await refreshOrderHistory(order.id);
     } catch { /* Sileo muestra el error. */ } finally { setSaving(null); }
   }
 
@@ -352,7 +395,12 @@ export default function OrderManager({ initialOrders }: Props) {
                 <p className="text-sm text-text-secondary">Los tres estados se guardan de forma independiente.</p>
                 {fields.map(field => <fieldset key={field.key}><legend className="mb-2 text-sm font-semibold">{field.label}</legend><div className="flex flex-wrap gap-2">{field.values.map(value => { const draft = statusDrafts[selected.id] ?? selected; const disabled = value === "completed" && (draft.fulfillment_status !== "delivered" || selected.payment_status !== "paid"); return <button type="button" key={value} disabled={disabled} aria-pressed={draft[field.key] === value} onClick={() => changeStatus(selected.id, field.key, value)} className={`${buttonClass} border px-3 ${draft[field.key] === value ? "border-brand-primary bg-brand-primary text-white" : "border-border-subtle bg-white text-text-primary hover:bg-brand-primary-soft"} disabled:opacity-40`}>{labels[value]}</button>; })}</div></fieldset>)}
                 <div className="grid grid-cols-3 gap-2 rounded-2xl bg-surface-soft p-3 text-center text-xs"><p>Pedido<strong className="mt-1 block text-[#2D6A4F]">{labels[(statusDrafts[selected.id] ?? selected).order_status]}</strong></p><p>Proveedor<strong className="mt-1 block text-[#2D6A4F]">{labels[(statusDrafts[selected.id] ?? selected).procurement_status]}</strong></p><p>Entrega<strong className="mt-1 block text-[#2D6A4F]">{labels[(statusDrafts[selected.id] ?? selected).fulfillment_status]}</strong></p></div>
+                {statusWarnings({ ...selected, ...(statusDrafts[selected.id] ?? {}) }).length > 0 && <div className="space-y-2" aria-label="Avisos de seguimiento">{statusWarnings({ ...selected, ...(statusDrafts[selected.id] ?? {}) }).map(warning => <p className="rounded-xl border border-[#FDE68A] bg-[#FEF3C7] px-3 py-2.5 text-sm text-[#754A0B]" role="status" key={warning}>{warning}</p>)}</div>}
                 <button className={`${buttonClass} w-full bg-brand-primary text-white`} type="button" disabled={saving === selected.id || !statusDrafts[selected.id] || fields.every(field => statusDrafts[selected.id]?.[field.key] === selected[field.key])} onClick={() => void saveStatuses(selected)}>{saving === selected.id ? "Guardando…" : "Guardar cambios"}</button>
+                <div className="border-t border-border-subtle pt-4">
+                  <h3 className="font-semibold">Historial de cambios</h3>
+                  {selected.history.length === 0 ? <p className="mt-2 text-sm text-text-secondary">Aún no hay cambios registrados.</p> : <ol className="mt-3 space-y-3">{selected.history.map(change => <li key={change.id} className="relative border-l border-border-subtle pb-1 pl-4 text-sm last:pb-0"><span className="absolute -left-[5px] top-1 h-2.5 w-2.5 rounded-full bg-brand-primary" aria-hidden="true" /><div className="flex flex-wrap justify-between gap-2"><strong>{historyTypeLabels[change.status_type] ?? "Cambio"}: {change.previous_value ? `${labels[change.previous_value] ?? change.previous_value} → ` : ""}{labels[change.next_value] ?? change.next_value}</strong><time className="text-xs text-text-secondary" dateTime={change.created_at}>{dateTime(change.created_at)}</time></div>{change.note && <p className="mt-1 text-text-secondary">{change.note}</p>}</li>)}</ol>}
+                </div>
               </div>}
 
               {section === "notes" && <div className="space-y-4 py-5">
