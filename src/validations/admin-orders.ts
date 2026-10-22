@@ -5,5 +5,23 @@ export const orderStatusUpdateSchema = z.object({
   orderStatus: z.enum(["pending_review", "confirmed", "cancelled", "completed"]),
   procurementStatus: z.enum(["not_required", "pending_supplier", "ordered", "received"]),
   fulfillmentStatus: z.enum(["pending", "ready", "delivered"]),
-  paymentStatus: z.enum(["pending", "partial", "paid"]),
+});
+
+export const orderAdminNotesUpdateSchema = z.object({
+  id: z.uuid(),
+  adminNotes: z.string().trim().max(2000),
+});
+
+export const orderHistoryQuerySchema = z.object({ orderId: z.uuid() });
+
+export const orderPaymentSchema = z.object({
+  orderId: z.uuid(),
+  amount: z.number().positive().max(9_999_999_999.99),
+  paymentMethod: z.enum(["cash", "sinpe_movil", "bank_transfer", "other"]),
+  note: z.string().trim().max(500).optional().default(""),
+});
+
+export const confirmedOrderTotalSchema = z.object({
+  orderId: z.uuid(),
+  confirmedTotal: z.number().positive().max(9_999_999_999.99),
 });

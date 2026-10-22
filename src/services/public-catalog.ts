@@ -18,6 +18,14 @@ export async function getPublicCatalogData(supabase: SupabaseClient<Database>) {
   ]);
 
   if (categoriesResult.error || productsResult.error) {
+    console.error("Falló una consulta del catálogo público", {
+      categories: categoriesResult.error
+        ? { code: categoriesResult.error.code, message: categoriesResult.error.message }
+        : null,
+      products: productsResult.error
+        ? { code: productsResult.error.code, message: productsResult.error.message }
+        : null,
+    });
     throw new Error("No fue posible cargar el catálogo.");
   }
 
