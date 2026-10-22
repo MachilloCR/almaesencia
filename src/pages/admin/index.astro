@@ -12,13 +12,24 @@ if (profile?.role !== "admin") {
   return Astro.redirect("/admin/login?error=unauthorized");
 }
 
-const [ordersResult, itemsResult] = await Promise.all([
-  supabase.from("orders").select("id, order_number, customer_name, customer_phone, estimated_total, currency, order_status, procurement_status, fulfillment_status, payment_status, created_at").order("created_at", { ascending: false }),
+const [ordersResult, itemsResult, paymentsResult] = await Promise.all([
+  supabase.from("orders").select("id, order_number, customer_name, customer_phone, estimated_total, confirmed_total, currency, order_status, procurement_status, fulfillment_status, payment_status, created_at").order("created_at", { ascending: false }),
   supabase.from("order_items").select("order_id, product_name_snapshot, quantity, unit_price_snapshot"),
+  supabase.from("order_payments").select("id, order_id, amount, payment_method, note, received_at").order("received_at", { ascending: false }),
 ]);
+const ordersLoadError = ordersResult.error || itemsResult.error || paymentsResult.error;
+if (ordersLoadError) {
+  console.error("No fue posible cargar los datos administrativos de pedidos", {
+    orders: ordersResult.error ? { code: ordersResult.error.code, message: ordersResult.error.message } : null,
+    items: itemsResult.error ? { code: itemsResult.error.code, message: itemsResult.error.message } : null,
+    payments: paymentsResult.error ? { code: paymentsResult.error.code, message: paymentsResult.error.message } : null,
+  });
+}
+
 const orders = (ordersResult.data ?? []).map((order) => ({
   ...order,
   items: (itemsResult.data ?? []).filter((item) => item.order_id === order.id),
+  payments: (paymentsResult.data ?? []).filter((payment) => payment.order_id === order.id),
 }));
 ---
 
@@ -33,7 +44,13 @@ const orders = (ordersResult.data ?? []).map((order) => ({
         <p class="mt-2 text-sm leading-6 text-text-secondary">Revisa solicitudes, coordina disponibilidad y actualiza su avance.</p>
       </div>
     </header>
-    <OrderManager client:load initialOrders={orders} />
+    {ordersLoadError ? (
+      <p class="mt-10 rounded-xl border border-border-subtle bg-surface-soft p-5 text-sm text-text-primary" role="alert">
+        No fue posible cargar los pedidos. Recarga la página e inténtalo de nuevo.
+      </p>
+    ) : (
+      <OrderManager client:load initialOrders={orders} />
+    )}
   </main>
   </div>
 </BaseLayout>

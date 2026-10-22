@@ -84,6 +84,26 @@ export type Database = {
           options_snapshot?: Json;
         }
       >;
+      order_payments: Table<
+        {
+          amount: number;
+          created_at: string;
+          id: string;
+          note: string | null;
+          order_id: string;
+          payment_method: PaymentMethod;
+          received_at: string;
+          recorded_by: string | null;
+        },
+        {
+          amount: number;
+          order_id: string;
+          payment_method: PaymentMethod;
+          note?: string | null;
+          received_at?: string;
+          recorded_by?: string | null;
+        }
+      >;
       order_status_history: Table<
         {
           changed_by: string | null;
@@ -109,6 +129,7 @@ export type Database = {
           completed_at: string | null;
           confirmed_at: string | null;
           created_at: string;
+          confirmed_total: number | null;
           currency: string;
           customer_name: string;
           customer_phone: string;
@@ -131,6 +152,7 @@ export type Database = {
           customer_name: string;
           customer_phone: string;
           order_number: string;
+          confirmed_total?: number | null;
           delivery_notes?: string | null;
         }
       >;
@@ -223,6 +245,31 @@ export type Database = {
           p_is_active: boolean;
         };
         Returns: Database["public"]["Tables"]["products"]["Row"][];
+      };
+      record_order_payment: {
+        Args: {
+          p_order_id: string;
+          p_amount: number;
+          p_payment_method: PaymentMethod;
+          p_note?: string | null;
+        };
+        Returns: {
+          payment_id: string;
+          amount: number;
+          payment_method: PaymentMethod;
+          note: string | null;
+          received_at: string;
+          total_paid: number;
+          payment_status: PaymentStatus;
+        }[];
+      };
+      set_order_confirmed_total: {
+        Args: { p_order_id: string; p_confirmed_total: number };
+        Returns: {
+          confirmed_total: number;
+          total_paid: number;
+          payment_status: PaymentStatus;
+        }[];
       };
     };
     Enums: {
