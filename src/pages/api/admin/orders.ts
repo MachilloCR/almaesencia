@@ -1,7 +1,7 @@
 import type { APIRoute } from "astro";
 import { createSupabaseServerClient } from "../../../lib/supabase/server-client";
 import { requireAdmin } from "../../../services/admin-catalog";
-import { orderStatusUpdateSchema } from "../../../validations/admin-orders";
+import { orderAdminNotesUpdateSchema, orderStatusUpdateSchema } from "../../../validations/admin-orders";
 
 export const PATCH: APIRoute = async (context) => {
   const headers = new Headers();
@@ -13,6 +13,16 @@ export const PATCH: APIRoute = async (context) => {
   } catch {
     return Response.json({ error: "El cuerpo JSON no es valido." }, { status: 400, headers });
   }
+  const notesPayload = orderAdminNotesUpdateSchema.safeParse(body);
+  if (notesPayload.success) {
+    const { data, error } = await supabase.from("orders").update({ admin_notes: notesPayload.data.adminNotes || null }).eq("id", notesPayload.data.id).select("id, admin_notes").single();
+    if (error) {
+      console.error("No fue posible guardar las notas del pedido", { code: error.code, message: error.message, details: error.details });
+      return Response.json({ error: "No fue posible guardar la nota del pedido." }, { status: 500, headers });
+    }
+    return Response.json({ order: data }, { headers });
+  }
+
   const payload = orderStatusUpdateSchema.safeParse(body);
   if (!payload.success) return Response.json({ error: "Estados no válidos." }, { status: 400, headers });
   const value = payload.data;

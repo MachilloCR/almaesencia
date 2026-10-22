@@ -13,7 +13,7 @@ if (profile?.role !== "admin") {
 }
 
 const [ordersResult, itemsResult, paymentsResult] = await Promise.all([
-  supabase.from("orders").select("id, order_number, customer_name, customer_phone, estimated_total, confirmed_total, currency, order_status, procurement_status, fulfillment_status, payment_status, created_at").order("created_at", { ascending: false }),
+  supabase.from("orders").select("id, order_number, customer_name, customer_phone, estimated_total, confirmed_total, currency, order_status, procurement_status, fulfillment_status, payment_status, admin_notes, created_at").order("created_at", { ascending: false }),
   supabase.from("order_items").select("order_id, product_name_snapshot, quantity, unit_price_snapshot"),
   supabase.from("order_payments").select("id, order_id, amount, payment_method, note, received_at").order("received_at", { ascending: false }),
 ]);

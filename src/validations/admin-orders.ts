@@ -7,6 +7,11 @@ export const orderStatusUpdateSchema = z.object({
   fulfillmentStatus: z.enum(["pending", "ready", "delivered"]),
 });
 
+export const orderAdminNotesUpdateSchema = z.object({
+  id: z.uuid(),
+  adminNotes: z.string().trim().max(2000),
+});
+
 export const orderPaymentSchema = z.object({
   orderId: z.uuid(),
   amount: z.number().positive().max(9_999_999_999.99),
