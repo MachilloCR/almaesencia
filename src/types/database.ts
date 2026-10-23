@@ -244,6 +244,31 @@ export type Database = {
         };
         Returns: Database["public"]["Tables"]["products"]["Row"][];
       };
+      save_admin_product_details: {
+        Args: {
+          p_product_id: string;
+          p_category_ids: string[];
+          p_name: string;
+          p_description: string | null;
+          p_price: number;
+        };
+        Returns: Database["public"]["Tables"]["products"]["Row"][];
+      };
+      set_admin_product_inventory: {
+        Args: {
+          p_product_id: string;
+          p_expected_quantity: number;
+          p_quantity: number;
+          p_availability_status: ProductAvailabilityStatus;
+        };
+        Returns: {
+          product_id: string;
+          quantity: number;
+          updated_at: string;
+          availability_status: ProductAvailabilityStatus;
+          is_active: boolean;
+        }[];
+      };
       is_admin: { Args: Record<string, never>; Returns: boolean };
       can_view_product_category: { Args: { p_category_id: string; p_product_id: string }; Returns: boolean };
       save_admin_product: {

@@ -7,16 +7,15 @@ export const categoryInputSchema = z.object({
   description: optionalDescription.nullish().transform((value) => value ?? null),
 });
 
-export const productInputSchema = z.object({
+const productDetailsSchema = z.object({
   categoryIds: z.array(z.uuid()).min(1).refine((ids) => new Set(ids).size === ids.length, "No repitas una categoría."),
   name: z.string().trim().min(2).max(140),
   description: optionalDescription,
   price: z.coerce.number().min(0).max(10_000_000),
-  availabilityStatus: z.enum(["in_stock", "on_order", "out_of_stock", "inactive"]),
-  isActive: z.boolean(),
 });
 
-export const productCreateSchema = productInputSchema.extend({
+export const productCreateSchema = productDetailsSchema.extend({
+  availabilityStatus: z.enum(["in_stock", "on_order", "out_of_stock"]),
   initialQuantity: z.coerce.number().int().min(0).max(1_000_000),
 }).superRefine((value, context) => {
   if ((value.initialQuantity > 0) !== (value.availabilityStatus === "in_stock")) {
@@ -24,19 +23,22 @@ export const productCreateSchema = productInputSchema.extend({
   }
 });
 
-export const productUpdateSchema = productInputSchema.extend({
+export const productUpdateSchema = productDetailsSchema.extend({
   id: z.uuid(),
 });
 
-export const inventoryAdjustmentSchema = z.object({
+export const adminInventoryUpdateSchema = z.object({
   productId: z.uuid(),
+  expectedQuantity: z.number().int().min(0).max(1_000_000),
   quantity: z.coerce.number().int().min(0).max(1_000_000),
-});
-
-export const markOutOfStockSchema = z.object({
-  productId: z.uuid(),
+  availabilityStatus: z.enum(["in_stock", "on_order", "out_of_stock"]),
+}).superRefine((value, context) => {
+  if ((value.quantity > 0) !== (value.availabilityStatus === "in_stock")) {
+    context.addIssue({ code: "custom", path: ["availabilityStatus"], message: "La disponibilidad no coincide con la cantidad." });
+  }
 });
 
 export type CategoryInput = z.infer<typeof categoryInputSchema>;
-export type ProductInput = z.infer<typeof productInputSchema>;
 export type ProductCreateInput = z.infer<typeof productCreateSchema>;
+export type ProductUpdateInput = z.infer<typeof productUpdateSchema>;
+export type AdminInventoryUpdate = z.infer<typeof adminInventoryUpdateSchema>;

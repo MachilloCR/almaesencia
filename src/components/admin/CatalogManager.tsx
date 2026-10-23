@@ -14,7 +14,6 @@ type Draft = {
   price: string;
   initialQuantity: string;
   availabilityStatus: ProductAvailabilityStatus;
-  isActive: boolean;
 };
 
 const labels: Record<ProductAvailabilityStatus, string> = {
@@ -23,7 +22,7 @@ const labels: Record<ProductAvailabilityStatus, string> = {
   out_of_stock: "Agotado",
   inactive: "Inactivo",
 };
-const availabilityOptions: ProductAvailabilityStatus[] = ["in_stock", "on_order", "out_of_stock", "inactive"];
+const availabilityOptions: ("on_order" | "out_of_stock")[] = ["on_order", "out_of_stock"];
 const badgeStyles: Record<ProductAvailabilityStatus, string> = {
   in_stock: "border-[#74C69D] bg-[#B7E4C7] text-[#1B4332]",
   on_order: "border-[#F59E0B] bg-[#FCD34D] text-[#78350F]",
@@ -32,7 +31,7 @@ const badgeStyles: Record<ProductAvailabilityStatus, string> = {
 };
 
 function blankDraft(categoryIds: string[] = []): Draft {
-  return { categoryIds, name: "", description: "", price: "", initialQuantity: "", availabilityStatus: "in_stock", isActive: true };
+  return { categoryIds, name: "", description: "", price: "", initialQuantity: "", availabilityStatus: "in_stock" };
 }
 
 function normalizeCategoryName(value: string) {
@@ -148,8 +147,8 @@ export default function CatalogManager({ initialCategories, initialProducts, ini
     return result;
   }
 
-  async function persist(productId?: string, changes?: Partial<Draft>) {
-    const values = { ...draft, ...changes };
+  async function persist(productId?: string) {
+    const values = draft;
     if (!productId && (values.initialQuantity.trim() === "" || !Number.isInteger(Number(values.initialQuantity)) || Number(values.initialQuantity) < 0 || Number(values.initialQuantity) > 1_000_000)) {
       sileo.error({ title: "Cantidad inicial no válida", description: "Indica un número entero entre 0 y 1 000 000." });
       return;
@@ -168,9 +167,11 @@ export default function CatalogManager({ initialCategories, initialProducts, ini
     try {
       const { product, inventoryItem } = await api<{ product: AdminProduct; inventoryItem?: AdminInventoryItem }>("/api/admin/products", productId ? "PATCH" : "POST", {
         ...(productId ? { id: productId } : {}),
-        ...values,
+        categoryIds: values.categoryIds,
+        name: values.name,
+        description: values.description,
         price: Number(values.price),
-        ...(!productId ? { initialQuantity: Number(values.initialQuantity) } : {}),
+        ...(!productId ? { initialQuantity: Number(values.initialQuantity), availabilityStatus: values.availabilityStatus } : {}),
       });
       setProducts((current) => [product, ...current.filter((item) => item.id !== product.id)]);
       if (inventoryItem) setInventory((current) => [inventoryItem, ...current.filter((item) => item.product_id !== product.id)]);
@@ -214,7 +215,6 @@ export default function CatalogManager({ initialCategories, initialProducts, ini
       price: String(product.price),
       initialQuantity: String(inventoryByProductId.get(product.id)?.quantity ?? 0),
       availabilityStatus: product.availability_status,
-      isActive: product.is_active,
     });
     setSelectedImage(null);
     setImageAltText(product.image?.altText ?? product.name);
@@ -260,21 +260,6 @@ export default function CatalogManager({ initialCategories, initialProducts, ini
     } finally {
       setSavingImage(false);
     }
-  }
-
-  function toggle(product: AdminProduct) {
-    const changes: Draft = {
-      categoryIds: product.categoryIds,
-      name: product.name,
-      description: product.description ?? "",
-      price: String(product.price),
-      initialQuantity: String(inventoryByProductId.get(product.id)?.quantity ?? 0),
-      availabilityStatus: product.availability_status,
-      isActive: !product.is_active,
-    };
-    setEditingId(product.id);
-    setDraft(changes);
-    void persist(product.id, changes);
   }
 
   return (
@@ -344,43 +329,36 @@ export default function CatalogManager({ initialCategories, initialProducts, ini
                 }));
               }} type="number" min="0" max="1000000" step="1" inputMode="numeric" required />
             </label>}
-            <fieldset className="min-w-0" disabled={saving}>
-              <legend className="text-sm font-semibold">Disponibilidad</legend>
-              <div className="mt-2 flex flex-wrap gap-2">
+            {!editingId && <fieldset className="min-w-0" disabled={saving}>
+              <legend className="text-sm font-semibold">Disponibilidad inicial</legend>
+              {draft.initialQuantity !== "" && Number(draft.initialQuantity) > 0 && <p className="mt-2 text-sm text-text-secondary">Con unidades físicas, se mostrará como Disponible.</p>}
+              {draft.initialQuantity !== "" && Number(draft.initialQuantity) === 0 && <div className="mt-2 flex flex-wrap gap-2">
                 {availabilityOptions.map((status) => {
                   const selected = draft.availabilityStatus === status;
-                  const unavailableForInitialStock = !editingId && draft.initialQuantity !== "" && (Number(draft.initialQuantity) > 0 ? status !== "in_stock" : status === "in_stock");
                   const selectedClass = selected
                     ? "border-brand-primary bg-brand-primary text-white"
                     : "border-border-subtle bg-white text-text-primary hover:border-accent-rose hover:bg-brand-primary-soft";
-                  return <label key={status} className={`relative inline-flex min-h-11 items-center gap-2 rounded-full border px-3 text-sm font-semibold focus-within:outline-none ${saving || unavailableForInitialStock ? "cursor-not-allowed opacity-60" : "cursor-pointer"} ${selectedClass} focus-within:ring-2 focus-within:ring-brand-primary focus-within:ring-offset-2`}>
+                  return <label key={status} className={`relative inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-full border px-3 text-sm font-semibold focus-within:outline-none ${selectedClass} focus-within:ring-2 focus-within:ring-brand-primary focus-within:ring-offset-2`}>
                     <input
                       className="peer sr-only"
                       type="radio"
                       name="availabilityStatus"
                       value={status}
                       checked={selected}
-                      disabled={unavailableForInitialStock}
                       onChange={() => set("availabilityStatus", status)}
                     />
                     <svg aria-hidden="true" className="size-4 shrink-0" fill="none" viewBox="0 0 20 20" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
-                      {status === "in_stock" && <><circle cx="10" cy="10" r="7" /><path d="m6.5 10 2.2 2.2 4.8-5" /></>}
                       {status === "on_order" && <><circle cx="10" cy="10" r="7" /><path d="M10 6v4l2.5 1.5" /></>}
                       {status === "out_of_stock" && <><circle cx="10" cy="10" r="7" /><path d="M6.5 10h7" /></>}
-                      {status === "inactive" && <><path d="M2.5 10s2.7-5 7.5-5 7.5 5 7.5 5-2.7 5-7.5 5-7.5-5-7.5-5Z" /><circle cx="10" cy="10" r="2" /><path d="m4 4 12 12" /></>}
                     </svg>
                     <span>{labels[status]}</span>
                     {selected && <svg aria-hidden="true" className="size-4 shrink-0" fill="none" viewBox="0 0 20 20" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m4.5 10.5 3.5 3 7.5-7" /></svg>}
                   </label>;
                 })}
-              </div>
-            </fieldset>
+              </div>}
+            </fieldset>}
             <label className="sm:col-span-2 text-sm font-semibold">Descripción <span className="font-normal text-text-secondary">(opcional)</span>
               <textarea className="mt-2 min-h-28 w-full rounded-lg border border-border-subtle bg-white px-3 py-2 font-normal outline-none focus:border-brand-primary focus:ring-3 focus:ring-brand-primary/12" value={draft.description} onChange={(event) => set("description", event.target.value)} maxLength={2_000} />
-            </label>
-            <label className="sm:col-span-2 flex min-h-11 items-center gap-3 rounded-lg bg-surface-soft px-3 text-sm">
-              <input className="size-5 accent-brand-primary" checked={draft.isActive} onChange={(event) => set("isActive", event.target.checked)} type="checkbox" />
-              Mostrar este producto en el catálogo cuando su categoría esté activa.
             </label>
             {(() => {
               const product = editingId ? products.find((item) => item.id === editingId) : undefined;
@@ -470,14 +448,13 @@ export default function CatalogManager({ initialCategories, initialProducts, ini
                 <div className="mt-auto pt-4">
                   <p className="text-lg font-semibold">{price(Number(product.price), product.currency)}</p>
                   <p className="mt-1 min-h-5 text-xs text-text-secondary">{visible ? "Visible en el catálogo" : "No visible en el catálogo"}</p>
-                  {inventoryItem && <ProductInventoryControl item={inventoryItem} product={product} onUpdated={(updatedItem, availabilityStatus) => {
+                  {inventoryItem && <ProductInventoryControl item={inventoryItem} product={product} onUpdated={(updatedItem, availabilityStatus, isActive) => {
                     setInventory((current) => current.map((item) => item.product_id === updatedItem.product_id ? updatedItem : item));
-                    if (availabilityStatus) setProducts((current) => current.map((item) => item.id === product.id ? { ...item, availability_status: availabilityStatus } : item));
+                    setProducts((current) => current.map((item) => item.id === product.id ? { ...item, availability_status: availabilityStatus, is_active: isActive } : item));
                   }} />}
                   {!inventoryItem && <p className="mt-4 text-xs text-text-secondary">No se pudo mostrar el inventario de este producto. Recarga la página.</p>}
                   <div className="mt-4 flex flex-wrap gap-2">
                     <button className="min-h-11 rounded-full border-[1.5px] border-brand-primary px-4 text-sm font-semibold text-brand-primary hover:bg-brand-primary-soft" type="button" onClick={() => edit(product)}>Editar</button>
-                    <button className="min-h-11 rounded-full px-4 text-sm font-semibold text-brand-primary hover:bg-brand-primary-soft disabled:text-text-secondary" type="button" onClick={() => toggle(product)} disabled={saving}>{product.is_active ? "Desactivar" : "Activar"}</button>
                   </div>
                 </div>
               </div>

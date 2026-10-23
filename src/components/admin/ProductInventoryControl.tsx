@@ -5,7 +5,7 @@ import type { AdminInventoryItem, AdminProduct } from "../../services/admin-cata
 type Props = {
   item: AdminInventoryItem;
   product: AdminProduct;
-  onUpdated: (item: AdminInventoryItem, availabilityStatus?: AdminProduct["availability_status"]) => void;
+  onUpdated: (item: AdminInventoryItem, availabilityStatus: AdminProduct["availability_status"], isActive: boolean) => void;
 };
 
 async function updateInventory(body: unknown) {
@@ -14,35 +14,35 @@ async function updateInventory(body: unknown) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
-  const result = await response.json() as { item?: AdminInventoryItem; availabilityStatus?: "out_of_stock"; error?: string };
-  if (!response.ok || !result.item) throw new Error(result.error ?? "No fue posible actualizar las existencias.");
-  return { item: result.item, availabilityStatus: result.availabilityStatus };
+  const result = await response.json() as { item?: AdminInventoryItem; availabilityStatus?: AdminProduct["availability_status"]; isActive?: boolean; error?: string };
+  if (!response.ok || !result.item || !result.availabilityStatus || result.isActive === undefined) {
+    throw new Error(result.error ?? "No fue posible actualizar las existencias.");
+  }
+  return { item: result.item, availabilityStatus: result.availabilityStatus, isActive: result.isActive };
 }
 
 export default function ProductInventoryControl({ item, product, onUpdated }: Props) {
   const [quantity, setQuantity] = useState(String(item.quantity));
   const [saving, setSaving] = useState(false);
+  const statusMatchesQuantity = item.quantity > 0
+    ? product.availability_status === "in_stock" && product.is_active
+    : (product.availability_status === "on_order" && product.is_active)
+      || (product.availability_status === "out_of_stock" && !product.is_active);
 
   useEffect(() => setQuantity(String(item.quantity)), [item.quantity]);
 
-  async function saveQuantity() {
-    const nextQuantity = Number(quantity);
-    if (!Number.isInteger(nextQuantity) || nextQuantity < 0 || nextQuantity > 1_000_000 || quantity.trim() === "") {
-      sileo.error({ title: "Cantidad no válida", description: "Usa un número entero entre 0 y 1 000 000." });
-      return;
-    }
-
+  async function save(nextQuantity: number, availabilityStatus: "in_stock" | "on_order" | "out_of_stock", title: string) {
     setSaving(true);
     try {
       const result = await sileo.promise(
-        updateInventory({ productId: product.id, quantity: nextQuantity }),
+        updateInventory({ productId: product.id, expectedQuantity: item.quantity, quantity: nextQuantity, availabilityStatus }),
         {
           loading: { title: "Actualizando existencias…" },
-          success: { title: "Inventario actualizado" },
+          success: { title },
           error: (error) => ({ title: "No se pudo guardar", description: String(error) }),
         },
       );
-      onUpdated(result.item, result.availabilityStatus);
+      onUpdated(result.item, result.availabilityStatus, result.isActive);
     } catch {
       // Sileo informa el error.
     } finally {
@@ -50,23 +50,14 @@ export default function ProductInventoryControl({ item, product, onUpdated }: Pr
     }
   }
 
-  async function markOutOfStock() {
-    setSaving(true);
-    try {
-      const result = await sileo.promise(
-        updateInventory({ action: "mark_out_of_stock", productId: product.id }),
-        {
-          loading: { title: "Marcando como agotado…" },
-          success: { title: "Producto agotado", description: "La cantidad quedó en cero." },
-          error: (error) => ({ title: "No se pudo actualizar", description: String(error) }),
-        },
-      );
-      onUpdated(result.item, result.availabilityStatus);
-    } catch {
-      // Sileo informa el error.
-    } finally {
-      setSaving(false);
+  function saveQuantity() {
+    const nextQuantity = Number(quantity);
+    if (!Number.isInteger(nextQuantity) || nextQuantity < 0 || nextQuantity > 1_000_000 || quantity.trim() === "") {
+      sileo.error({ title: "Cantidad no válida", description: "Usa un número entero entre 0 y 1 000 000." });
+      return;
     }
+    if (nextQuantity === item.quantity) return;
+    void save(nextQuantity, nextQuantity > 0 ? "in_stock" : "on_order", "Inventario actualizado");
   }
 
   return <div className="mt-4 rounded-xl border border-border-subtle bg-surface-soft p-3">
@@ -85,13 +76,20 @@ export default function ProductInventoryControl({ item, product, onUpdated }: Pr
         value={quantity}
         onChange={(event) => setQuantity(event.target.value)}
       />
-      <button className="min-h-11 rounded-full bg-brand-primary px-3 text-xs font-semibold text-white hover:bg-brand-primary-hover disabled:opacity-60" type="button" onClick={() => void saveQuantity()} disabled={saving || quantity === String(item.quantity)}>
+      <button className="min-h-11 rounded-full bg-brand-primary px-3 text-xs font-semibold text-white hover:bg-brand-primary-hover disabled:opacity-60" type="button" onClick={saveQuantity} disabled={saving || quantity.trim() === "" || Number(quantity) === item.quantity}>
         {saving ? "Guardando…" : "Guardar cantidad"}
       </button>
     </div>
+    <p className="mt-2 text-xs leading-5 text-text-secondary">Con unidades se mostrará Disponible. Al llegar a cero se ofrecerá Por encargo.</p>
     <p className="mt-2 text-xs text-text-secondary">Actualizado: {new Intl.DateTimeFormat("es-CR", { dateStyle: "medium" }).format(new Date(item.updated_at))}</p>
-    <button className="mt-2 min-h-11 rounded-full px-3 text-xs font-semibold text-brand-primary hover:bg-brand-primary-soft disabled:opacity-60" type="button" onClick={() => void markOutOfStock()} disabled={saving || (item.quantity === 0 && product.availability_status === "out_of_stock")}>
+    {item.quantity === 0 && (product.availability_status !== "on_order" || !product.is_active) && <button className="mt-2 min-h-11 rounded-full px-3 text-xs font-semibold text-brand-primary hover:bg-brand-primary-soft disabled:opacity-60" type="button" onClick={() => void save(0, "on_order", "Producto disponible por encargo")} disabled={saving || quantity !== String(item.quantity)}>
+      Ofrecer por encargo
+    </button>}
+    {item.quantity === 0 && (product.availability_status !== "out_of_stock" || product.is_active) && <button className="mt-2 min-h-11 rounded-full px-3 text-xs font-semibold text-brand-primary hover:bg-brand-primary-soft disabled:opacity-60" type="button" onClick={() => void save(0, "out_of_stock", "Producto marcado como agotado")} disabled={saving || quantity !== String(item.quantity)}>
       Marcar agotado
-    </button>
+    </button>}
+    {item.quantity > 0 && !statusMatchesQuantity && <button className="mt-2 min-h-11 rounded-full px-3 text-xs font-semibold text-brand-primary hover:bg-brand-primary-soft disabled:opacity-60" type="button" onClick={() => void save(item.quantity, "in_stock", "Producto marcado como disponible")} disabled={saving || quantity !== String(item.quantity)}>
+      Marcar disponible
+    </button>}
   </div>;
 }

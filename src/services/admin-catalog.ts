@@ -1,6 +1,6 @@
 import type { SupabaseClient, User } from "@supabase/supabase-js";
 import type { Database } from "../types/database";
-import type { CategoryInput, ProductCreateInput, ProductInput } from "../validations/admin-catalog";
+import type { AdminInventoryUpdate, CategoryInput, ProductCreateInput, ProductUpdateInput } from "../validations/admin-catalog";
 
 type CategoryRow = Database["public"]["Tables"]["categories"]["Row"];
 type ProductRow = Database["public"]["Tables"]["products"]["Row"];
@@ -221,7 +221,7 @@ export async function createProduct(supabase: AdminSupabaseClient, input: Produc
     p_description: input.description,
     p_price: input.price,
     p_availability_status: input.availabilityStatus,
-    p_is_active: input.isActive,
+    p_is_active: input.availabilityStatus !== "out_of_stock",
     p_initial_quantity: input.initialQuantity,
   });
 
@@ -238,17 +238,14 @@ export async function createProduct(supabase: AdminSupabaseClient, input: Produc
 export async function updateProduct(
   supabase: AdminSupabaseClient,
   id: string,
-  input: ProductInput,
+  input: Omit<ProductUpdateInput, "id">,
 ) {
-  const { data, error } = await supabase.rpc("save_admin_product", {
+  const { data, error } = await supabase.rpc("save_admin_product_details", {
     p_product_id: id,
     p_category_ids: input.categoryIds,
     p_name: input.name,
-    p_slug: "",
     p_description: input.description,
     p_price: input.price,
-    p_availability_status: input.availabilityStatus,
-    p_is_active: input.isActive,
   });
 
   if (error || !data?.[0]) {
@@ -278,39 +275,32 @@ export async function getAdminInventoryData(supabase: AdminSupabaseClient) {
   return data as AdminInventoryItem[];
 }
 
-export async function updateInventoryQuantity(
-  supabase: AdminSupabaseClient,
-  productId: string,
-  quantity: number,
-  updatedBy: string,
-) {
-  const { data, error } = await supabase
-    .from("inventory")
-    .update({ quantity, updated_by: updatedBy })
-    .eq("product_id", productId)
-    .select("product_id, quantity, updated_at")
-    .single();
-
-  if (error) {
-    throw new Error("No fue posible actualizar las existencias.");
+export class InventoryChangedError extends Error {
+  constructor() {
+    super("Las existencias cambiaron. Recarga la página antes de guardar.");
+    this.name = "InventoryChangedError";
   }
-
-  return data as AdminInventoryItem;
 }
 
-export async function markProductOutOfStock(
-  supabase: AdminSupabaseClient,
-  productId: string,
-  updatedBy: string,
-) {
-  const { error: productError } = await supabase
-    .from("products")
-    .update({ availability_status: "out_of_stock" })
-    .eq("id", productId);
+export async function setAdminProductInventory(supabase: AdminSupabaseClient, input: AdminInventoryUpdate) {
+  const { data, error } = await supabase.rpc("set_admin_product_inventory", {
+    p_product_id: input.productId,
+    p_expected_quantity: input.expectedQuantity,
+    p_quantity: input.quantity,
+    p_availability_status: input.availabilityStatus,
+  });
 
-  if (productError) {
-    throw new Error("No fue posible marcar el producto como agotado.");
+  if (error?.code === "P0001" && error.message.includes("INVENTORY_STALE")) {
+    throw new InventoryChangedError();
+  }
+  if (error || !data?.[0]) {
+    throw new Error("No fue posible actualizar las existencias y la disponibilidad.");
   }
 
-  return updateInventoryQuantity(supabase, productId, 0, updatedBy);
+  const result = data[0];
+  return {
+    item: { product_id: result.product_id, quantity: result.quantity, updated_at: result.updated_at } as AdminInventoryItem,
+    availabilityStatus: result.availability_status,
+    isActive: result.is_active,
+  };
 }
