@@ -1,6 +1,6 @@
 import type { SupabaseClient, User } from "@supabase/supabase-js";
 import type { Database } from "../types/database";
-import type { CategoryInput, ProductInput } from "../validations/admin-catalog";
+import type { CategoryInput, ProductCreateInput, ProductInput } from "../validations/admin-catalog";
 
 type CategoryRow = Database["public"]["Tables"]["categories"]["Row"];
 type ProductRow = Database["public"]["Tables"]["products"]["Row"];
@@ -212,10 +212,9 @@ export class CategoryAlreadyExistsError extends Error {
   }
 }
 
-export async function createProduct(supabase: AdminSupabaseClient, input: ProductInput) {
+export async function createProduct(supabase: AdminSupabaseClient, input: ProductCreateInput) {
   const slug = await createUniqueSlug(supabase, "products", input.name);
-  const { data, error } = await supabase.rpc("save_admin_product", {
-    p_product_id: null,
+  const { data, error } = await supabase.rpc("create_admin_product_with_initial_stock", {
     p_category_ids: input.categoryIds,
     p_name: input.name,
     p_slug: slug,
@@ -223,13 +222,17 @@ export async function createProduct(supabase: AdminSupabaseClient, input: Produc
     p_price: input.price,
     p_availability_status: input.availabilityStatus,
     p_is_active: input.isActive,
+    p_initial_quantity: input.initialQuantity,
   });
 
   if (error || !data?.[0]) {
     throw new Error("No fue posible crear el producto.");
   }
 
-  return { ...data[0], categoryIds: input.categoryIds, image: null } as AdminProduct;
+  return {
+    product: { ...data[0], categoryIds: input.categoryIds, image: null } as AdminProduct,
+    inventoryItem: { product_id: data[0].id, quantity: input.initialQuantity, updated_at: new Date().toISOString() } as AdminInventoryItem,
+  };
 }
 
 export async function updateProduct(

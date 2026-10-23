@@ -2,15 +2,17 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Toaster, sileo } from "sileo";
 import { optimizeProductImage, ProductImageProcessingError } from "../../lib/images/optimize-product-image";
 import CategoryMultiSelect from "./CategoryMultiSelect";
-import type { AdminCategory, AdminProduct } from "../../services/admin-catalog";
+import ProductInventoryControl from "./ProductInventoryControl";
+import type { AdminCategory, AdminInventoryItem, AdminProduct } from "../../services/admin-catalog";
 import type { ProductAvailabilityStatus } from "../../types/database";
 
-type Props = { initialCategories: AdminCategory[]; initialProducts: AdminProduct[] };
+type Props = { initialCategories: AdminCategory[]; initialProducts: AdminProduct[]; initialInventory: AdminInventoryItem[] };
 type Draft = {
   categoryIds: string[];
   name: string;
   description: string;
   price: string;
+  initialQuantity: string;
   availabilityStatus: ProductAvailabilityStatus;
   isActive: boolean;
 };
@@ -30,7 +32,7 @@ const badgeStyles: Record<ProductAvailabilityStatus, string> = {
 };
 
 function blankDraft(categoryIds: string[] = []): Draft {
-  return { categoryIds, name: "", description: "", price: "", availabilityStatus: "in_stock", isActive: true };
+  return { categoryIds, name: "", description: "", price: "", initialQuantity: "", availabilityStatus: "in_stock", isActive: true };
 }
 
 function normalizeCategoryName(value: string) {
@@ -52,13 +54,15 @@ function price(value: number, currency: string) {
   return new Intl.NumberFormat("es-CR", { style: "currency", currency, maximumFractionDigits: 0 }).format(value);
 }
 
-export default function CatalogManager({ initialCategories, initialProducts }: Props) {
+export default function CatalogManager({ initialCategories, initialProducts, initialInventory }: Props) {
   const [categories, setCategories] = useState(initialCategories);
   const [products, setProducts] = useState(initialProducts);
+  const [inventory, setInventory] = useState(initialInventory);
   const [searchQuery, setSearchQuery] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [availabilityFilter, setAvailabilityFilter] = useState("all");
   const [visibilityFilter, setVisibilityFilter] = useState("all");
+  const [stockFilter, setStockFilter] = useState("all");
   const [draft, setDraft] = useState<Draft>(() => blankDraft());
   const [editingId, setEditingId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -71,6 +75,7 @@ export default function CatalogManager({ initialCategories, initialProducts }: P
   const [productModalOpen, setProductModalOpen] = useState(false);
   const productDialogRef = useRef<HTMLDialogElement>(null);
   const categoryById = useMemo(() => new Map(categories.map((category) => [category.id, category])), [categories]);
+  const inventoryByProductId = useMemo(() => new Map(inventory.map((item) => [item.product_id, item])), [inventory]);
   const activeCategories = categories.filter((category) => category.is_active);
   const normalizedQuery = searchQuery.trim().toLocaleLowerCase("es");
   const filteredProducts = products.filter((product) => {
@@ -82,9 +87,11 @@ export default function CatalogManager({ initialCategories, initialProducts }: P
     const matchesAvailability = availabilityFilter === "all" || product.availability_status === availabilityFilter;
     const isVisible = product.is_active && product.availability_status !== "inactive" && productCategories.some((category) => category.is_active);
     const matchesVisibility = visibilityFilter === "all" || (visibilityFilter === "visible" ? isVisible : !isVisible);
-    return matchesQuery && matchesCategory && matchesAvailability && matchesVisibility;
+    const quantity = inventoryByProductId.get(product.id)?.quantity ?? 0;
+    const matchesStock = stockFilter === "all" || (stockFilter === "available" ? quantity > 0 : quantity === 0);
+    return matchesQuery && matchesCategory && matchesAvailability && matchesVisibility && matchesStock;
   });
-  const hasFilters = Boolean(searchQuery || categoryFilter !== "all" || availabilityFilter !== "all" || visibilityFilter !== "all");
+  const hasFilters = Boolean(searchQuery || categoryFilter !== "all" || availabilityFilter !== "all" || visibilityFilter !== "all" || stockFilter !== "all");
 
   const set = <Key extends keyof Draft>(key: Key, value: Draft[Key]) =>
     setDraft((current) => ({ ...current, [key]: value }));
@@ -143,6 +150,10 @@ export default function CatalogManager({ initialCategories, initialProducts }: P
 
   async function persist(productId?: string, changes?: Partial<Draft>) {
     const values = { ...draft, ...changes };
+    if (!productId && (values.initialQuantity.trim() === "" || !Number.isInteger(Number(values.initialQuantity)) || Number(values.initialQuantity) < 0 || Number(values.initialQuantity) > 1_000_000)) {
+      sileo.error({ title: "Cantidad inicial no válida", description: "Indica un número entero entre 0 y 1 000 000." });
+      return;
+    }
     if (selectedImage && imageAltText.trim().length > 0 && imageAltText.trim().length < 3) {
       sileo.error({ title: "Completa el texto alternativo", description: "Usa al menos 3 caracteres o deja el campo vacío para usar el nombre del producto." });
       return;
@@ -155,12 +166,14 @@ export default function CatalogManager({ initialCategories, initialProducts }: P
     setCategorySelectionError("");
     setSaving(true);
     try {
-      const { product } = await api<{ product: AdminProduct }>("/api/admin/products", productId ? "PATCH" : "POST", {
+      const { product, inventoryItem } = await api<{ product: AdminProduct; inventoryItem?: AdminInventoryItem }>("/api/admin/products", productId ? "PATCH" : "POST", {
         ...(productId ? { id: productId } : {}),
         ...values,
         price: Number(values.price),
+        ...(!productId ? { initialQuantity: Number(values.initialQuantity) } : {}),
       });
       setProducts((current) => [product, ...current.filter((item) => item.id !== product.id)]);
+      if (inventoryItem) setInventory((current) => [inventoryItem, ...current.filter((item) => item.product_id !== product.id)]);
       if (!productId) setEditingId(product.id);
       let savedProduct = product;
       let imageWarning: string | null = null;
@@ -199,6 +212,7 @@ export default function CatalogManager({ initialCategories, initialProducts }: P
       name: product.name,
       description: product.description ?? "",
       price: String(product.price),
+      initialQuantity: String(inventoryByProductId.get(product.id)?.quantity ?? 0),
       availabilityStatus: product.availability_status,
       isActive: product.is_active,
     });
@@ -254,6 +268,7 @@ export default function CatalogManager({ initialCategories, initialProducts }: P
       name: product.name,
       description: product.description ?? "",
       price: String(product.price),
+      initialQuantity: String(inventoryByProductId.get(product.id)?.quantity ?? 0),
       availabilityStatus: product.availability_status,
       isActive: !product.is_active,
     };
@@ -271,7 +286,7 @@ export default function CatalogManager({ initialCategories, initialProducts }: P
             <div>
               <p className="text-xs font-semibold tracking-[0.14em] text-brand-primary uppercase">Productos</p>
               <h2 className="mt-2 font-display text-2xl font-semibold">Administra el catálogo</h2>
-              <p className="mt-2 text-sm leading-6 text-text-secondary">Crea o edita productos en una ventana enfocada. Ajusta las existencias en Inventario.</p>
+              <p className="mt-2 text-sm leading-6 text-text-secondary">Crea productos, consulta existencias y ajusta cada artículo desde esta página.</p>
             </div>
             <button className="min-h-11 rounded-full bg-brand-primary px-5 py-3 text-sm font-semibold text-white hover:bg-brand-primary-hover disabled:cursor-not-allowed disabled:bg-brand-primary-soft disabled:text-text-secondary" type="button" onClick={createProductDraft}>
               Crear producto
@@ -291,7 +306,7 @@ export default function CatalogManager({ initialCategories, initialProducts }: P
               <div>
                 <p className="text-xs font-semibold tracking-[0.14em] text-brand-primary uppercase">Productos</p>
                 <h2 id="product-dialog-title" className="mt-2 font-display text-2xl font-semibold">{editingId ? "Editar producto" : "Crear producto"}</h2>
-                <p className="mt-2 text-sm leading-6 text-text-secondary">El inventario inicia en cero y se ajustará en su propia sección.</p>
+                <p className="mt-2 text-sm leading-6 text-text-secondary">{editingId ? "Edita el producto aquí y sus existencias en la tarjeta." : "Registra los datos del producto y sus unidades iniciales."}</p>
               </div>
           <button className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-full text-brand-primary hover:bg-brand-primary-soft" type="button" onClick={reset} aria-label="Cerrar ventana">
             <svg aria-hidden="true" className="size-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
@@ -317,21 +332,35 @@ export default function CatalogManager({ initialCategories, initialProducts }: P
             <label className="text-sm font-semibold">Precio estimado (CRC)
               <input className="mt-2 min-h-11 w-full rounded-lg border border-border-subtle bg-white px-3 font-normal outline-none focus:border-brand-primary focus:ring-3 focus:ring-brand-primary/12" value={draft.price} onChange={(event) => set("price", event.target.value)} type="number" min="0" step="0.01" inputMode="decimal" required />
             </label>
+            {!editingId && <label className="text-sm font-semibold">Unidades físicas iniciales
+              <input className="mt-2 min-h-11 w-full rounded-lg border border-border-subtle bg-white px-3 font-normal outline-none focus:border-brand-primary focus:ring-3 focus:ring-brand-primary/12" value={draft.initialQuantity} onChange={(event) => {
+                const initialQuantity = event.target.value;
+                setDraft((current) => ({
+                  ...current,
+                  initialQuantity,
+                  availabilityStatus: initialQuantity !== "" && Number(initialQuantity) > 0
+                    ? "in_stock"
+                    : current.availabilityStatus === "in_stock" ? "on_order" : current.availabilityStatus,
+                }));
+              }} type="number" min="0" max="1000000" step="1" inputMode="numeric" required />
+            </label>}
             <fieldset className="min-w-0" disabled={saving}>
               <legend className="text-sm font-semibold">Disponibilidad</legend>
               <div className="mt-2 flex flex-wrap gap-2">
                 {availabilityOptions.map((status) => {
                   const selected = draft.availabilityStatus === status;
+                  const unavailableForInitialStock = !editingId && draft.initialQuantity !== "" && (Number(draft.initialQuantity) > 0 ? status !== "in_stock" : status === "in_stock");
                   const selectedClass = selected
                     ? "border-brand-primary bg-brand-primary text-white"
                     : "border-border-subtle bg-white text-text-primary hover:border-accent-rose hover:bg-brand-primary-soft";
-                  return <label key={status} className={`relative inline-flex min-h-11 items-center gap-2 rounded-full border px-3 text-sm font-semibold focus-within:outline-none ${saving ? "cursor-not-allowed opacity-60" : "cursor-pointer"} ${selectedClass} focus-within:ring-2 focus-within:ring-brand-primary focus-within:ring-offset-2`}>
+                  return <label key={status} className={`relative inline-flex min-h-11 items-center gap-2 rounded-full border px-3 text-sm font-semibold focus-within:outline-none ${saving || unavailableForInitialStock ? "cursor-not-allowed opacity-60" : "cursor-pointer"} ${selectedClass} focus-within:ring-2 focus-within:ring-brand-primary focus-within:ring-offset-2`}>
                     <input
                       className="peer sr-only"
                       type="radio"
                       name="availabilityStatus"
                       value={status}
                       checked={selected}
+                      disabled={unavailableForInitialStock}
                       onChange={() => set("availabilityStatus", status)}
                     />
                     <svg aria-hidden="true" className="size-4 shrink-0" fill="none" viewBox="0 0 20 20" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
@@ -383,7 +412,7 @@ export default function CatalogManager({ initialCategories, initialProducts }: P
 
       <section className="mt-10">
         <div className="flex flex-wrap items-end justify-between gap-4"><div><p className="text-xs font-semibold tracking-[0.14em] text-brand-primary uppercase">Catálogo interno</p><h2 className="mt-2 font-display text-2xl font-semibold">Productos registrados</h2></div><p className="text-sm text-text-secondary">Mostrando {filteredProducts.length} de {products.length} producto{products.length === 1 ? "" : "s"}</p></div>
-        <div className="mt-5 grid gap-3 rounded-[16px] border border-border-subtle bg-surface-card p-4 sm:grid-cols-2 xl:grid-cols-[minmax(14rem,1.5fr)_repeat(3,minmax(10rem,1fr))]">
+        <div className="mt-5 grid gap-3 rounded-[16px] border border-border-subtle bg-surface-card p-4 sm:grid-cols-2 xl:grid-cols-5">
           <label className="text-xs font-semibold text-text-secondary">Buscar producto
             <input className="mt-2 min-h-11 w-full rounded-lg border border-border-subtle bg-white px-3 text-sm font-normal text-text-primary outline-none placeholder:text-text-secondary/70 focus:border-brand-primary focus:ring-3 focus:ring-brand-primary/12" type="search" placeholder="Nombre, descripción o categoría" value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} />
           </label>
@@ -406,12 +435,20 @@ export default function CatalogManager({ initialCategories, initialProducts }: P
               <option value="hidden">No visible</option>
             </select>
           </label>
+          <label className="text-xs font-semibold text-text-secondary">Existencias
+            <select className="mt-2 min-h-11 w-full rounded-lg border border-border-subtle bg-white px-3 text-sm font-normal text-text-primary outline-none focus:border-brand-primary focus:ring-3 focus:ring-brand-primary/12" value={stockFilter} onChange={(event) => setStockFilter(event.target.value)}>
+              <option value="all">Todas</option>
+              <option value="available">Con unidades</option>
+              <option value="empty">Sin unidades</option>
+            </select>
+          </label>
         </div>
         {products.length === 0 ? <div className="mt-5 rounded-[20px] border border-dashed border-border-subtle bg-surface-card px-6 py-12 text-center"><h3 className="font-display text-xl font-semibold">Tu catálogo está listo para comenzar</h3><p className="mt-3 text-sm leading-6 text-text-secondary">Agrega una categoría y luego registra tu primer producto.</p></div> :
-          filteredProducts.length === 0 ? <div className="mt-5 rounded-[20px] border border-dashed border-border-subtle bg-surface-card px-6 py-10 text-center"><h3 className="font-display text-xl font-semibold">No encontramos productos con esos filtros</h3><p className="mt-2 text-sm text-text-secondary">Prueba otro nombre o cambia las opciones seleccionadas.</p>{hasFilters && <button className="mt-4 min-h-11 rounded-full px-4 text-sm font-semibold text-brand-primary hover:bg-brand-primary-soft" type="button" onClick={() => { setSearchQuery(""); setCategoryFilter("all"); setAvailabilityFilter("all"); setVisibilityFilter("all"); }}>Limpiar filtros</button>}</div> :
-          <ul className="mt-5 grid grid-cols-2 items-stretch gap-3 md:grid-cols-3 xl:grid-cols-4">{filteredProducts.map((product) => {
+          filteredProducts.length === 0 ? <div className="mt-5 rounded-[20px] border border-dashed border-border-subtle bg-surface-card px-6 py-10 text-center"><h3 className="font-display text-xl font-semibold">No encontramos productos con esos filtros</h3><p className="mt-2 text-sm text-text-secondary">Prueba otro nombre o cambia las opciones seleccionadas.</p>{hasFilters && <button className="mt-4 min-h-11 rounded-full px-4 text-sm font-semibold text-brand-primary hover:bg-brand-primary-soft" type="button" onClick={() => { setSearchQuery(""); setCategoryFilter("all"); setAvailabilityFilter("all"); setVisibilityFilter("all"); setStockFilter("all"); }}>Limpiar filtros</button>}</div> :
+          <ul className="mt-5 grid grid-cols-1 items-stretch gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">{filteredProducts.map((product) => {
             const productCategories = product.categoryIds.map((id) => categoryById.get(id)).filter((category) => category !== undefined);
             const visible = product.is_active && product.availability_status !== "inactive" && productCategories.some((category) => category.is_active);
+            const inventoryItem = inventoryByProductId.get(product.id);
             return <li className="flex h-full flex-col rounded-[20px] border border-border-subtle bg-surface-card p-3 shadow-[0_4px_20px_-2px_rgba(134,54,93,0.05)]" key={product.id}>
               <div className="relative aspect-[4/5] overflow-hidden rounded-xl border border-border-subtle bg-gradient-to-br from-surface-soft via-brand-primary-soft to-[#F6E4D8]">
                 {product.image?.url && !failedProductImageIds.has(product.id)
@@ -433,6 +470,11 @@ export default function CatalogManager({ initialCategories, initialProducts }: P
                 <div className="mt-auto pt-4">
                   <p className="text-lg font-semibold">{price(Number(product.price), product.currency)}</p>
                   <p className="mt-1 min-h-5 text-xs text-text-secondary">{visible ? "Visible en el catálogo" : "No visible en el catálogo"}</p>
+                  {inventoryItem && <ProductInventoryControl item={inventoryItem} product={product} onUpdated={(updatedItem, availabilityStatus) => {
+                    setInventory((current) => current.map((item) => item.product_id === updatedItem.product_id ? updatedItem : item));
+                    if (availabilityStatus) setProducts((current) => current.map((item) => item.id === product.id ? { ...item, availability_status: availabilityStatus } : item));
+                  }} />}
+                  {!inventoryItem && <p className="mt-4 text-xs text-text-secondary">No se pudo mostrar el inventario de este producto. Recarga la página.</p>}
                   <div className="mt-4 flex flex-wrap gap-2">
                     <button className="min-h-11 rounded-full border-[1.5px] border-brand-primary px-4 text-sm font-semibold text-brand-primary hover:bg-brand-primary-soft" type="button" onClick={() => edit(product)}>Editar</button>
                     <button className="min-h-11 rounded-full px-4 text-sm font-semibold text-brand-primary hover:bg-brand-primary-soft disabled:text-text-secondary" type="button" onClick={() => toggle(product)} disabled={saving}>{product.is_active ? "Desactivar" : "Activar"}</button>

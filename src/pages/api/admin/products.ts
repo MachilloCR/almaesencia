@@ -4,7 +4,7 @@ import {
   requireAdmin,
   updateProduct,
 } from "../../../services/admin-catalog";
-import { productInputSchema, productUpdateSchema } from "../../../validations/admin-catalog";
+import { productCreateSchema, productUpdateSchema } from "../../../validations/admin-catalog";
 import { createSupabaseServerClient } from "../../../lib/supabase/server-client";
 
 function json(data: unknown, responseHeaders: Headers, status = 200) {
@@ -25,14 +25,14 @@ export const POST: APIRoute = async (context) => {
     return json({ error: "No tienes autorización para realizar esta acción." }, responseHeaders, 401);
   }
 
-  const payload = productInputSchema.safeParse(await context.request.json());
+  const payload = productCreateSchema.safeParse(await context.request.json());
   if (!payload.success) {
     return json({ error: "Revisa los datos obligatorios del producto." }, responseHeaders, 400);
   }
 
   try {
-    const product = await createProduct(supabase, payload.data);
-    return json({ product }, responseHeaders, 201);
+    const { product, inventoryItem } = await createProduct(supabase, payload.data);
+    return json({ product, inventoryItem }, responseHeaders, 201);
   } catch {
     return json({ error: "No fue posible crear el producto." }, responseHeaders, 500);
   }

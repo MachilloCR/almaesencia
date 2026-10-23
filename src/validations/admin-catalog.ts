@@ -16,6 +16,14 @@ export const productInputSchema = z.object({
   isActive: z.boolean(),
 });
 
+export const productCreateSchema = productInputSchema.extend({
+  initialQuantity: z.coerce.number().int().min(0).max(1_000_000),
+}).superRefine((value, context) => {
+  if ((value.initialQuantity > 0) !== (value.availabilityStatus === "in_stock")) {
+    context.addIssue({ code: "custom", path: ["availabilityStatus"], message: "La disponibilidad no coincide con la cantidad inicial." });
+  }
+});
+
 export const productUpdateSchema = productInputSchema.extend({
   id: z.uuid(),
 });
@@ -31,3 +39,4 @@ export const markOutOfStockSchema = z.object({
 
 export type CategoryInput = z.infer<typeof categoryInputSchema>;
 export type ProductInput = z.infer<typeof productInputSchema>;
+export type ProductCreateInput = z.infer<typeof productCreateSchema>;
