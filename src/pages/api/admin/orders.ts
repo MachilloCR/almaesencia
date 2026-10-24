@@ -58,15 +58,45 @@ export const PATCH: APIRoute = async (context) => {
       return Response.json({ error: "Registra el pago completo antes de completar el pedido." }, { status: 400, headers });
     }
   }
-  const { data, error } = await supabase.from("orders").update({ order_status: value.orderStatus, procurement_status: value.procurementStatus, fulfillment_status: value.fulfillmentStatus }).eq("id", value.id).select("id, order_status, procurement_status, fulfillment_status, payment_status").single();
+  if (value.orderStatus === "confirmed") {
+    const current = await supabase.from("orders").select("order_status").eq("id", value.id).single();
+    if (current.error) {
+      return Response.json({ error: "No fue posible consultar el estado actual del pedido." }, { status: 500, headers });
+    }
+    if (current.data.order_status === "pending_review") {
+      const readiness = await supabase.from("order_items").select("stock_deducted_quantity").eq("order_id", value.id).limit(1);
+      if (readiness.error) {
+        console.error("No fue posible verificar el registro de inventario antes de confirmar", {
+          code: readiness.error.code,
+          message: readiness.error.message,
+        });
+        return Response.json({ error: "El control de inventario todavía no está listo para confirmar pedidos. Intenta más tarde." }, { status: 503, headers });
+      }
+    }
+  }
+  const { data, error } = await supabase.from("orders").update({ order_status: value.orderStatus, procurement_status: value.procurementStatus, fulfillment_status: value.fulfillmentStatus }).eq("id", value.id).select("id, order_status, procurement_status, fulfillment_status, payment_status, confirmed_at").single();
   if (error) {
     console.error("No fue posible actualizar los estados del pedido", {
       code: error.code,
       message: error.message,
       details: error.details,
     });
+    if (error.code === "P0001") {
+      return Response.json({ error: error.message }, { status: 409, headers });
+    }
+    if (error.code === "42501") {
+      return Response.json({ error: "No tienes autorización para actualizar este pedido." }, { status: 403, headers });
+    }
     return Response.json({ error: "No fue posible actualizar el pedido." }, { status: 500, headers });
   }
 
-  return Response.json({ order: data }, { headers });
+  const movements = await supabase.from("order_items").select("id, stock_deducted_quantity").eq("order_id", value.id);
+  if (movements.error) {
+    console.error("El pedido se actualizó, pero no se pudo cargar su desglose de inventario", {
+      code: movements.error.code,
+      message: movements.error.message,
+    });
+  }
+
+  return Response.json({ order: data, stockMovements: movements.data ?? null }, { headers });
 };

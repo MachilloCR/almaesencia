@@ -71,6 +71,7 @@ export type Database = {
           product_name_snapshot: string;
           product_slug_snapshot: string | null;
           quantity: number;
+          stock_deducted_quantity: number | null;
           unit_price_snapshot: number;
         },
         {
@@ -80,6 +81,7 @@ export type Database = {
           product_name_snapshot: string;
           product_slug_snapshot?: string | null;
           quantity: number;
+          stock_deducted_quantity?: number | null;
           unit_price_snapshot: number;
           options_snapshot?: Json;
         }

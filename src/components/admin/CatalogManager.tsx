@@ -3,6 +3,7 @@ import { Toaster, sileo } from "sileo";
 import { optimizeProductImage, ProductImageProcessingError } from "../../lib/images/optimize-product-image";
 import CategoryMultiSelect from "./CategoryMultiSelect";
 import ProductInventoryControl from "./ProductInventoryControl";
+import StatusBadge from "../ui/StatusBadge";
 import type { AdminCategory, AdminInventoryItem, AdminProduct } from "../../services/admin-catalog";
 import type { ProductAvailabilityStatus } from "../../types/database";
 
@@ -23,13 +24,6 @@ const labels: Record<ProductAvailabilityStatus, string> = {
   inactive: "Inactivo",
 };
 const availabilityOptions: ("on_order" | "out_of_stock")[] = ["on_order", "out_of_stock"];
-const badgeStyles: Record<ProductAvailabilityStatus, string> = {
-  in_stock: "border-[#74C69D] bg-[#B7E4C7] text-[#1B4332]",
-  on_order: "border-[#F59E0B] bg-[#FCD34D] text-[#78350F]",
-  out_of_stock: "border-[#F87171] bg-[#FECACA] text-[#991B1B]",
-  inactive: "border-[#A99AA1] bg-[#D6CDD1] text-[#493B42]",
-};
-
 function blankDraft(categoryIds: string[] = []): Draft {
   return { categoryIds, name: "", description: "", price: "", initialQuantity: "", availabilityStatus: "in_stock" };
 }
@@ -432,14 +426,9 @@ export default function CatalogManager({ initialCategories, initialProducts, ini
                 {product.image?.url && !failedProductImageIds.has(product.id)
                   ? <img className="size-full object-cover" src={product.image.url} alt={product.image.altText} width="480" height="600" loading="lazy" onError={() => setFailedProductImageIds((current) => new Set(current).add(product.id))} />
                   : <div className="flex size-full items-end p-4"><span className="rounded-xl border border-white/70 bg-white/55 px-4 py-3 font-display text-lg italic text-brand-primary/80">Alma Esencia CR</span></div>}
-                <span className={`absolute left-3 top-3 inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-semibold shadow-sm ${badgeStyles[product.availability_status]}`}>
-                  <svg aria-hidden="true" className="size-3.5 shrink-0" fill="none" viewBox="0 0 16 16" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
-                    {product.availability_status === "in_stock" && <path d="m3.5 8 3 3 6-6" />}
-                    {product.availability_status === "on_order" && <><circle cx="8" cy="8" r="5.5" /><path d="M8 4.5V8l2.25 1.5" /></>}
-                    {(product.availability_status === "out_of_stock" || product.availability_status === "inactive") && <><circle cx="8" cy="8" r="5.5" /><path d="m4.1 4.1 7.8 7.8" /></>}
-                  </svg>
-                  {labels[product.availability_status]}
-                </span>
+                <div className="absolute left-3 top-3 max-w-[calc(100%-1.5rem)] drop-shadow-sm">
+                  <StatusBadge context="product" status={product.is_active ? product.availability_status : "inactive"} size="compact" />
+                </div>
               </div>
               <div className="flex flex-1 flex-col pt-4">
                 <p className="line-clamp-2 min-h-8 text-xs font-semibold tracking-[0.12em] text-text-secondary uppercase">{productCategories.map((category) => category.name).join(" · ") || "Categoría eliminada"}</p>

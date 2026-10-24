@@ -3,15 +3,9 @@ import { Toaster, sileo } from "sileo";
 import type { AdminCategory } from "../../services/admin-catalog";
 import type { PublicProduct } from "../../services/public-catalog";
 import { useCartStore } from "../../stores/cart-store";
+import StatusBadge, { getStatusLabel } from "../ui/StatusBadge";
 
 type Props = { categories: AdminCategory[]; products: PublicProduct[] };
-
-const availability = {
-  in_stock: { label: "Disponible", classes: "border-[#C8E6C9] bg-[#E8F5E9] text-[#2D6A4F]" },
-  on_order: { label: "Por encargo", classes: "border-[#FDE68A] bg-[#FEF3C7] text-[#8A5A12]" },
-  out_of_stock: { label: "Agotado", classes: "border-[#F87171] bg-[#FECACA] text-[#991B1B]" },
-  inactive: { label: "Inactivo", classes: "border-[#E2D9DD] bg-[#F0ECEE] text-[#6B5E65]" },
-} as const;
 
 function formatPrice(value: number, currency: string) {
   return new Intl.NumberFormat("es-CR", { style: "currency", currency, maximumFractionDigits: 0 }).format(value);
@@ -66,7 +60,7 @@ export default function CatalogProductGrid({ categories, products }: Props) {
         <div className="mt-4 flex flex-wrap items-center gap-2" role="group" aria-label="Filtrar por disponibilidad">
           <span className="mr-1 text-xs font-semibold text-text-secondary">Disponibilidad</span>
           {(["all", "in_stock", "on_order"] as const).map((status) => {
-            const label = status === "all" ? "Todas" : availability[status].label;
+            const label = status === "all" ? "Todas" : getStatusLabel("product", status);
             return <button className={`min-h-10 rounded-full px-4 text-sm font-semibold transition ${availabilityFilter === status ? "bg-brand-primary text-white" : "bg-brand-primary-soft text-text-secondary hover:text-brand-primary"}`} key={status} type="button" aria-pressed={availabilityFilter === status} onClick={() => setAvailabilityFilter(status)}>{label}</button>;
           })}
           {hasFilters && <button className="min-h-10 rounded-full px-3 text-sm font-semibold text-brand-primary hover:underline" type="button" onClick={() => { setSearchQuery(""); setCategoryFilter("all"); setAvailabilityFilter("all"); }}>Limpiar filtros</button>}
@@ -83,7 +77,6 @@ export default function CatalogProductGrid({ categories, products }: Props) {
       <div className="grid w-full min-w-0 grid-cols-2 gap-4 sm:grid-cols-3 sm:gap-5 lg:grid-cols-4 lg:gap-6">
         {filteredProducts.map((product, index) => {
           const categoryNames = product.categoryIds.map((categoryId) => categoriesById.get(categoryId)?.name).filter((name): name is string => Boolean(name));
-          const status = availability[product.availability_status];
           const canAdd = product.availability_status !== "out_of_stock" && product.availability_status !== "inactive";
           const isCosmetics = categoryNames.some((name) => /cosm[eé]t|maquillaje|farmasi/i.test(name));
 
@@ -99,14 +92,9 @@ export default function CatalogProductGrid({ categories, products }: Props) {
                     <p className="font-display text-xl italic text-brand-primary/75">Alma Esencia CR</p>
                   </div>
                 </div>}
-                <span className={`absolute left-4 top-4 inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-semibold ${status.classes}`}>
-                  <svg aria-hidden="true" className="size-3.5 shrink-0" fill="none" viewBox="0 0 16 16" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
-                    {product.availability_status === "in_stock" && <path d="m3.5 8 3 3 6-6" />}
-                    {product.availability_status === "on_order" && <><circle cx="8" cy="8" r="5.5" /><path d="M8 4.5V8l2.25 1.5" /></>}
-                    {(product.availability_status === "out_of_stock" || product.availability_status === "inactive") && <><circle cx="8" cy="8" r="5.5" /><path d="m4.1 4.1 7.8 7.8" /></>}
-                  </svg>
-                  {status.label}
-                </span>
+                <div className="absolute left-4 top-4 max-w-[calc(100%-2rem)] drop-shadow-sm">
+                  <StatusBadge context="product" status={product.availability_status} size="compact" />
+                </div>
               </div>
               <div className="min-w-0 px-3 py-3 sm:px-4 sm:py-4">
                 <p className="line-clamp-2 min-h-8 text-xs font-semibold tracking-[0.12em] text-text-secondary uppercase">{categoryNames.join(" · ")}</p>
