@@ -2,8 +2,11 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { AdminCategory, AdminProduct } from "./admin-catalog";
 import type { Database } from "../types/database";
 
+export type PublicProduct = AdminProduct & { stockQuantity: number | null };
+export type PublicProductAvailability = Pick<AdminProduct, "id" | "availability_status">;
+
 export async function getPublicCatalogData(supabase: SupabaseClient<Database>) {
-  const [categoriesResult, productsResult] = await Promise.all([
+  const [categoriesResult, productsResult, stockResult] = await Promise.all([
     supabase
       .from("categories")
       .select("id, name, slug, description, is_active")
@@ -13,17 +16,22 @@ export async function getPublicCatalogData(supabase: SupabaseClient<Database>) {
       .from("products")
       .select("id, category_id, name, slug, description, price, currency, availability_status, is_active")
       .eq("is_active", true)
-      .neq("availability_status", "inactive")
+      .in("availability_status", ["in_stock", "on_order"])
       .order("created_at", { ascending: false }),
+    supabase.rpc("get_public_product_stock"),
   ]);
 
-  if (categoriesResult.error || productsResult.error) {
+  const stockFunctionPending = stockResult.error?.code === "PGRST202";
+  if (categoriesResult.error || productsResult.error || (stockResult.error && !stockFunctionPending)) {
     console.error("Falló una consulta del catálogo público", {
       categories: categoriesResult.error
         ? { code: categoriesResult.error.code, message: categoriesResult.error.message }
         : null,
       products: productsResult.error
         ? { code: productsResult.error.code, message: productsResult.error.message }
+        : null,
+      stock: stockResult.error
+        ? { code: stockResult.error.code, message: stockResult.error.message }
         : null,
     });
     throw new Error("No fue posible cargar el catálogo.");
@@ -41,9 +49,11 @@ export async function getPublicCatalogData(supabase: SupabaseClient<Database>) {
     categoryIdsByProduct.set(association.product_id, ids);
   }
   const activeCategoryIds = new Set(categoriesResult.data.map((category) => category.id));
+  const stockByProduct = new Map((stockResult.data ?? []).map((item) => [item.product_id, item.quantity]));
   const products = (productRows as AdminProduct[])
     .map((product) => ({ ...product, categoryIds: [product.category_id, ...(categoryIdsByProduct.get(product.id) ?? []).filter((id) => id !== product.category_id)] }))
-    .filter((product) => product.categoryIds.some((categoryId) => activeCategoryIds.has(categoryId)));
+    .filter((product) => product.categoryIds.some((categoryId) => activeCategoryIds.has(categoryId)))
+    .filter((product) => stockFunctionPending || product.availability_status === "on_order" || (stockByProduct.get(product.id) ?? 0) > 0);
   const imagesResult = products.length
     ? await supabase.from("product_images").select("product_id, storage_path, alt_text, sort_order").in("product_id", products.map((product) => product.id)).order("sort_order")
     : { data: [], error: null };
@@ -57,6 +67,18 @@ export async function getPublicCatalogData(supabase: SupabaseClient<Database>) {
 
   return {
     categories: categoriesResult.data as AdminCategory[],
-    products: products.map((product) => ({ ...product, image: imageByProduct.get(product.id) ?? null })),
+    products: products.map((product) => ({ ...product, image: imageByProduct.get(product.id) ?? null, stockQuantity: stockByProduct.get(product.id) ?? null })) satisfies PublicProduct[],
   };
+}
+
+export async function getPublicProductAvailability(supabase: SupabaseClient<Database>): Promise<PublicProductAvailability[]> {
+  const [productsResult, stockResult] = await Promise.all([
+    supabase.from("products").select("id, availability_status").eq("is_active", true).in("availability_status", ["in_stock", "on_order"]),
+    supabase.rpc("get_public_product_stock"),
+  ]);
+  const stockFunctionPending = stockResult.error?.code === "PGRST202";
+  if (productsResult.error || (stockResult.error && !stockFunctionPending)) throw new Error("No fue posible revisar la disponibilidad de la solicitud.");
+
+  const stockedIds = new Set((stockResult.data ?? []).map((item) => item.product_id));
+  return productsResult.data.filter((product) => stockFunctionPending || product.availability_status === "on_order" || stockedIds.has(product.id));
 }

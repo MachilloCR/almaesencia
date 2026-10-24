@@ -1,9 +1,10 @@
 import { useMemo, useState } from "react";
 import { Toaster, sileo } from "sileo";
-import type { AdminCategory, AdminProduct } from "../../services/admin-catalog";
+import type { AdminCategory } from "../../services/admin-catalog";
+import type { PublicProduct } from "../../services/public-catalog";
 import { useCartStore } from "../../stores/cart-store";
 
-type Props = { categories: AdminCategory[]; products: AdminProduct[] };
+type Props = { categories: AdminCategory[]; products: PublicProduct[] };
 
 const availability = {
   in_stock: { label: "Disponible", classes: "border-[#C8E6C9] bg-[#E8F5E9] text-[#2D6A4F]" },
@@ -64,7 +65,7 @@ export default function CatalogProductGrid({ categories, products }: Props) {
         </div>
         <div className="mt-4 flex flex-wrap items-center gap-2" role="group" aria-label="Filtrar por disponibilidad">
           <span className="mr-1 text-xs font-semibold text-text-secondary">Disponibilidad</span>
-          {(["all", "in_stock", "on_order", "out_of_stock"] as const).map((status) => {
+          {(["all", "in_stock", "on_order"] as const).map((status) => {
             const label = status === "all" ? "Todas" : availability[status].label;
             return <button className={`min-h-10 rounded-full px-4 text-sm font-semibold transition ${availabilityFilter === status ? "bg-brand-primary text-white" : "bg-brand-primary-soft text-text-secondary hover:text-brand-primary"}`} key={status} type="button" aria-pressed={availabilityFilter === status} onClick={() => setAvailabilityFilter(status)}>{label}</button>;
           })}
@@ -110,6 +111,7 @@ export default function CatalogProductGrid({ categories, products }: Props) {
               <div className="min-w-0 px-3 py-3 sm:px-4 sm:py-4">
                 <p className="line-clamp-2 min-h-8 text-xs font-semibold tracking-[0.12em] text-text-secondary uppercase">{categoryNames.join(" · ")}</p>
                 <h3 className="mt-2 truncate font-display text-lg font-medium text-text-primary sm:text-xl" title={product.name}>{product.name}</h3>
+                {product.availability_status === "in_stock" && product.stockQuantity !== null && <p className="mt-1 text-xs font-semibold text-[#2D6A4F]">{product.stockQuantity} {product.stockQuantity === 1 ? "unidad" : "unidades"} en stock</p>}
                 <div className="mt-3 flex min-w-0 items-center justify-between gap-2">
                   <div className="min-w-0">
                     <p className="text-base font-semibold text-text-primary sm:text-lg">{formatPrice(Number(product.price), product.currency)}</p>

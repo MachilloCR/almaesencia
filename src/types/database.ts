@@ -231,6 +231,10 @@ export type Database = {
         };
         Returns: { order_id: string; order_number: string }[];
       };
+      get_public_product_stock: {
+        Args: Record<string, never>;
+        Returns: { product_id: string; quantity: number }[];
+      };
       create_admin_product_with_initial_stock: {
         Args: {
           p_category_ids: string[];
