@@ -422,29 +422,32 @@ export default function CatalogManager({ initialCategories, initialProducts, ini
             const visible = product.is_active && product.availability_status !== "inactive" && productCategories.some((category) => category.is_active);
             const inventoryItem = inventoryByProductId.get(product.id);
             return <li className="flex h-full flex-col rounded-[20px] border border-border-subtle bg-surface-card p-3 shadow-[0_4px_20px_-2px_rgba(134,54,93,0.05)]" key={product.id}>
-              <div className="relative aspect-[4/5] overflow-hidden rounded-xl border border-border-subtle bg-gradient-to-br from-surface-soft via-brand-primary-soft to-[#F6E4D8]">
+              <div className="relative aspect-[4/3] overflow-hidden rounded-xl border border-border-subtle bg-[#F1ECE9]">
                 {product.image?.url && !failedProductImageIds.has(product.id)
-                  ? <img className="size-full object-cover" src={product.image.url} alt={product.image.altText} width="480" height="600" loading="lazy" onError={() => setFailedProductImageIds((current) => new Set(current).add(product.id))} />
+                  ? <img className="size-full object-contain p-1" src={product.image.url} alt={product.image.altText} width="480" height="360" loading="lazy" onError={() => setFailedProductImageIds((current) => new Set(current).add(product.id))} />
                   : <div className="flex size-full items-end p-4"><span className="rounded-xl border border-white/70 bg-white/55 px-4 py-3 font-display text-lg italic text-brand-primary/80">Alma Esencia CR</span></div>}
                 <div className="absolute left-3 top-3 max-w-[calc(100%-1.5rem)] drop-shadow-sm">
                   <StatusBadge context="product" status={product.is_active ? product.availability_status : "inactive"} size="compact" />
                 </div>
               </div>
-              <div className="flex flex-1 flex-col pt-4">
-                <p className="line-clamp-2 min-h-8 text-xs font-semibold tracking-[0.12em] text-text-secondary uppercase">{productCategories.map((category) => category.name).join(" · ") || "Categoría eliminada"}</p>
-                <h3 className="mt-2 line-clamp-2 min-h-14 font-display text-xl font-medium">{product.name}</h3>
-                <p className="mt-2 line-clamp-2 min-h-12 text-sm leading-6 text-text-secondary">{product.description || "Sin descripción."}</p>
-                <div className="mt-auto pt-4">
-                  <p className="text-lg font-semibold">{price(Number(product.price), product.currency)}</p>
-                  <p className="mt-1 min-h-5 text-xs text-text-secondary">{visible ? "Visible en el catálogo" : "No visible en el catálogo"}</p>
-                  {inventoryItem && <ProductInventoryControl item={inventoryItem} product={product} onUpdated={(updatedItem, availabilityStatus, isActive) => {
+              <div className="flex flex-1 flex-col pt-3">
+                <p className="line-clamp-1 min-h-4 text-[11px] font-semibold tracking-[0.12em] text-text-secondary uppercase">{productCategories.map((category) => category.name).join(" · ") || "Categoría eliminada"}</p>
+                <h3 className="mt-1 line-clamp-2 min-h-12 font-display text-lg font-medium leading-6 text-text-primary">{product.name}</h3>
+                <p className="mt-1 line-clamp-2 min-h-10 text-sm leading-5 text-text-secondary">{product.description || "Sin descripción."}</p>
+                <div className="flex flex-1 flex-col pt-3">
+                  <p className="text-xl font-semibold text-text-primary">{price(Number(product.price), product.currency)}</p>
+                  <p className="mt-0.5 min-h-4 text-xs text-text-secondary">{visible ? "Visible en el catálogo" : "No visible en el catálogo"}</p>
+                  {inventoryItem && <ProductInventoryControl item={inventoryItem} product={product} onEdit={() => edit(product)} onUpdated={(updatedItem, availabilityStatus, isActive) => {
                     setInventory((current) => current.map((item) => item.product_id === updatedItem.product_id ? updatedItem : item));
                     setProducts((current) => current.map((item) => item.id === product.id ? { ...item, availability_status: availabilityStatus, is_active: isActive } : item));
                   }} />}
                   {!inventoryItem && <p className="mt-4 text-xs text-text-secondary">No se pudo mostrar el inventario de este producto. Recarga la página.</p>}
-                  <div className="mt-4 flex flex-wrap gap-2">
-                    <button className="min-h-11 rounded-full border-[1.5px] border-brand-primary px-4 text-sm font-semibold text-brand-primary hover:bg-brand-primary-soft" type="button" onClick={() => edit(product)}>Editar</button>
-                  </div>
+                  {!inventoryItem && <div className="mt-auto border-t border-border-subtle pt-3">
+                    <button className="flex min-h-11 w-full items-center justify-center gap-2 rounded-full bg-brand-primary px-4 text-sm font-semibold text-white transition-colors hover:bg-brand-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary focus-visible:ring-offset-2" type="button" onClick={() => edit(product)}>
+                      <svg aria-hidden="true" className="size-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m16 4 4 4M4 20l4-.8L19.2 8a2.1 2.1 0 0 0-3-3L5 16.2 4 20Z" /><path d="M13.5 6.5 17.5 10.5" /></svg>
+                      Editar
+                    </button>
+                  </div>}
                 </div>
               </div>
             </li>;

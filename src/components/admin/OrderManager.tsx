@@ -95,20 +95,6 @@ function totalPaid(order: Order) {
   return order.payments.reduce((total, payment) => total + Math.round(Number(payment.amount) * 100), 0) / 100;
 }
 
-function nextAction(order: Order, paid: number) {
-  if (order.order_status === "cancelled") return "Solicitud cancelada";
-  if (order.order_status === "completed") return "Pedido finalizado";
-  if (order.confirmed_total === null) return "Guardar precio acordado";
-  if (order.order_status === "pending_review") return "Confirmar condiciones con el cliente";
-  if (order.procurement_status === "pending_supplier") return "Solicitar productos al proveedor";
-  if (order.procurement_status === "ordered") return "Esperando recepción del proveedor";
-  if (order.fulfillment_status === "pending") return order.procurement_status === "not_required" || order.procurement_status === "received" ? "Preparar entrega" : "Coordinar abastecimiento";
-  if (paid < order.confirmed_total) return "Registrar pago pendiente";
-  if (order.fulfillment_status === "ready") return "Coordinar entrega";
-  if (order.fulfillment_status === "delivered") return "Marcar pedido completado";
-  return "Pedido en proceso";
-}
-
 function statusWarnings(order: Order) {
   const warnings: string[] = [];
   const deliveryStarted = order.fulfillment_status === "ready" || order.fulfillment_status === "delivered";
@@ -318,40 +304,54 @@ export default function OrderManager({ initialOrders }: Props) {
             const progress = order.confirmed_total ? Math.min((paid / order.confirmed_total) * 100, 100) : 0;
             const itemCount = order.items.reduce((total, item) => total + item.quantity, 0);
             return (
-              <li className="min-w-0 rounded-[20px] border border-border-subtle bg-white p-4 shadow-[0_4px_20px_-2px_rgba(134,54,93,0.05)] sm:p-5" key={order.id}>
+              <li className="min-w-0 rounded-[20px] border border-border-subtle bg-white p-3 text-text-primary shadow-[0_4px_20px_-2px_rgba(134,54,93,0.05)] sm:p-4" key={order.id}>
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <p className="text-xs font-semibold text-brand-primary">#{order.order_number}<span className="ml-2 font-normal text-text-secondary">{dateTime(order.created_at)}</span></p>
-                    <h2 className="mt-1 truncate font-display text-xl font-semibold text-text-primary">{order.customer_name}</h2>
+                    <p className="text-xs leading-5"><span className="font-semibold text-brand-primary">#{order.order_number}</span><span className="text-text-secondary"> · {dateTime(order.created_at)}</span></p>
+                    <h2 className="mt-1 truncate text-lg font-semibold leading-6">{order.customer_name}</h2>
                   </div>
                   <StatusBadge context="order" status={order.order_status} />
                 </div>
 
-                <div className="mt-4 space-y-1.5 text-sm">
-                  {order.items.slice(0, 2).map(item => <div className="flex justify-between gap-3" key={item.id}><span className="min-w-0 truncate text-text-secondary">{item.quantity} × {item.product_name_snapshot}</span><span className="shrink-0 font-semibold">{money(Number(item.unit_price_snapshot) * item.quantity)}</span></div>)}
+                <div className="mt-4 space-y-2.5 text-sm">
+                  {order.items.slice(0, 2).map(item => <div className="flex items-start justify-between gap-3" key={item.id}><span className="min-w-0 break-words text-text-secondary">{item.quantity} × {item.product_name_snapshot}</span><span className="shrink-0 font-semibold">{money(Number(item.unit_price_snapshot) * item.quantity)}</span></div>)}
                   {order.items.length > 2 && <p className="text-xs text-text-secondary">y {order.items.length - 2} productos más</p>}
                 </div>
 
                 <div className="mt-4 rounded-xl bg-surface-soft p-3">
-                  <div className="flex flex-wrap items-baseline justify-between gap-2">
-                    <span className="text-xs text-text-secondary">{order.confirmed_total === null ? "Precio estimado" : "Total confirmado"}</span>
-                    <strong className="text-lg">{money(order.confirmed_total ?? Number(order.estimated_total))}</strong>
+                  <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+                    <span className="text-sm text-text-secondary">{order.confirmed_total === null ? "Precio estimado" : "Total confirmado"}</span>
+                    <strong className="text-lg font-semibold">{money(order.confirmed_total ?? Number(order.estimated_total))}</strong>
                   </div>
-                  <div className="mt-1 flex flex-wrap items-center justify-between gap-2 text-xs">
-                    <span className="flex min-w-0 flex-wrap items-center gap-2"><StatusBadge context="payment" status={order.payment_status} size="compact" /><span className="text-xs font-semibold text-text-secondary">{money(paid)}</span></span>
-                    <span className="ml-auto text-right">Saldo: <strong>{balance === null ? "Por confirmar" : money(balance)}</strong></span>
+                  <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+                    <StatusBadge context="payment" status={order.payment_status} size="compact" />
+                    <span className="text-xs text-text-secondary">{order.confirmed_total === null ? "Precio por confirmar" : `${Math.round(progress)}% pagado`}</span>
                   </div>
-                  {order.confirmed_total !== null && <div className="mt-2 h-2 overflow-hidden rounded-full bg-white" role="progressbar" aria-label="Progreso de pago" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(progress)}><div className="h-full rounded-full bg-[#31B779] transition-[width]" style={{ width: `${progress}%` }} /></div>}
+                  {order.confirmed_total !== null && <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white" role="progressbar" aria-label="Progreso de pago" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(progress)}><div className="h-full rounded-full bg-[#31B779] transition-[width]" style={{ width: `${progress}%` }} /></div>}
+                  <div className="mt-3 grid grid-cols-2 gap-3 text-xs">
+                    <div><span className="block text-text-secondary">Abonado</span><strong className="mt-1 block text-sm">{money(paid)}</strong></div>
+                    <div className="text-right"><span className="block text-text-secondary">Saldo pendiente</span><strong className="mt-1 block text-sm">{balance === null ? "Por confirmar" : money(balance)}</strong></div>
+                  </div>
                 </div>
 
-                <div className="mt-3 grid gap-1.5 text-xs">
-                  {fields.filter(field => field.key !== "order_status").map(field => <div className="flex min-w-0 items-center justify-between gap-3 rounded-lg bg-[#FAF7F8] px-3 py-2" key={field.key}><span className="text-text-secondary">{field.label}</span><StatusBadge context={field.key === "procurement_status" ? "procurement" : "fulfillment"} status={order[field.key]} size="compact" /></div>)}
+                <div className="mt-4 divide-y divide-border-subtle border-y border-border-subtle text-sm">
+                  {fields.filter(field => field.key !== "order_status").map(field => <div className="flex min-h-14 min-w-0 items-center justify-between gap-3 py-3" key={field.key}>
+                    <span className="flex min-w-0 items-center gap-2 text-text-secondary">
+                      <svg aria-hidden="true" className="size-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                        {field.key === "procurement_status" ? <><path d="m12 2 9 5-9 5-9-5 9-5Z" /><path d="M3 7v10l9 5 9-5V7m-9 5v10" /></> : <><path d="M3 7h11v10H3zM14 10h4l3 3v4h-7z" /><circle cx="7" cy="18" r="2" /><circle cx="18" cy="18" r="2" /></>}
+                      </svg>
+                      {field.label}
+                    </span>
+                    <StatusBadge context={field.key === "procurement_status" ? "procurement" : "fulfillment"} status={order[field.key]} size="compact" />
+                  </div>)}
                 </div>
-                <p className="mt-3 rounded-lg border-l-[3px] border-brand-primary bg-brand-primary-soft px-3 py-2 text-xs text-text-primary"><span className="font-semibold">Siguiente:</span> {nextAction(order, paid)}</p>
                 <p className="sr-only">{itemCount} productos en total.</p>
-                <div className="mt-4 grid grid-cols-[1fr_auto] gap-2">
-                  <button className={`${buttonClass} bg-brand-primary text-white hover:bg-brand-primary-hover`} type="button" onClick={() => openOrder(order)}>Gestionar</button>
-                  <a className={`${buttonClass} border border-[#16A765] px-4 text-[#087D4B] hover:bg-[#EAF8F0]`} href={whatsappUrl(order)} target="_blank" rel="noreferrer" aria-label={`Contactar por WhatsApp a ${order.customer_name}`}>WhatsApp</a>
+                <div className="mt-3 grid grid-cols-[minmax(0,1fr)_auto] gap-2">
+                  <button className={`${buttonClass} min-w-0 bg-brand-primary text-white hover:bg-brand-primary-hover`} type="button" onClick={() => openOrder(order)}>Gestionar</button>
+                  <a className={`${buttonClass} gap-2 border border-[#16A765] px-4 text-[#087D4B] hover:bg-[#EAF8F0]`} href={whatsappUrl(order)} target="_blank" rel="noreferrer" aria-label={`Contactar por WhatsApp a ${order.customer_name}`}>
+                    <svg aria-hidden="true" className="size-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M20.5 11.5a8.5 8.5 0 0 1-12.4 7.5L3 20l1.1-4.8a8.5 8.5 0 1 1 16.4-3.7Z" /><path d="M8.5 8.5c.5 2.3 2.7 4.5 5 5l1.4-1.2 2 1.1c-.4 1.7-1.5 2.6-3.2 2.4-3.8-.5-6.9-3.6-7.4-7.4-.2-1.7.7-2.8 2.4-3.2l1.1 2-1.3 1.3Z" /></svg>
+                    WhatsApp
+                  </a>
                 </div>
               </li>
             );

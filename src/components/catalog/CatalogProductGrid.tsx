@@ -15,6 +15,7 @@ export default function CatalogProductGrid({ categories, products }: Props) {
   const add = useCartStore((state) => state.add);
   const [searchQuery, setSearchQuery] = useState("");
   const [failedImageIds, setFailedImageIds] = useState<Set<string>>(() => new Set());
+  const [addedProductIds, setAddedProductIds] = useState<Set<string>>(() => new Set());
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [availabilityFilter, setAvailabilityFilter] = useState("all");
   const categoriesById = useMemo(() => new Map(categories.map((category) => [category.id, category])), [categories]);
@@ -78,6 +79,7 @@ export default function CatalogProductGrid({ categories, products }: Props) {
         {filteredProducts.map((product, index) => {
           const categoryNames = product.categoryIds.map((categoryId) => categoriesById.get(categoryId)?.name).filter((name): name is string => Boolean(name));
           const canAdd = product.availability_status !== "out_of_stock" && product.availability_status !== "inactive";
+          const wasAdded = addedProductIds.has(product.id);
           const isCosmetics = categoryNames.some((name) => /cosm[eé]t|maquillaje|farmasi/i.test(name));
 
           return (
@@ -105,13 +107,28 @@ export default function CatalogProductGrid({ categories, products }: Props) {
                     <p className="text-base font-semibold text-text-primary sm:text-lg">{formatPrice(Number(product.price), product.currency)}</p>
                     <p className="mt-0.5 text-xs text-text-secondary">Precio estimado</p>
                   </div>
-                  <button className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-full bg-brand-primary text-white transition hover:bg-brand-primary-hover focus-visible:outline-offset-2 disabled:cursor-not-allowed disabled:bg-brand-primary-soft disabled:text-text-secondary" type="button" aria-label={`${canAdd ? "Agregar a solicitud" : "Agotado"}: ${product.name}`} title={canAdd ? "Agregar a solicitud" : "Agotado"} disabled={!canAdd} onClick={() => { add({ id: product.id, name: product.name, slug: product.slug, price: Number(product.price), currency: product.currency, availability_status: product.availability_status }); sileo.success({ title: "Agregado a tu solicitud", description: product.name }); }}>
-                    <svg aria-hidden="true" className="size-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M3.75 4.5h2l2.1 10.1a2.25 2.25 0 0 0 2.2 1.79h7.4a2.25 2.25 0 0 0 2.2-1.79l1.1-5.35H7" />
-                      <circle cx="10" cy="19.5" r="1" />
-                      <circle cx="17.5" cy="19.5" r="1" />
-                      {canAdd && <path d="M14 9v4m-2-2h4" />}
-                    </svg>
+                  <button
+                    className={`inline-flex min-h-11 min-w-11 items-center justify-center rounded-full text-white transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary disabled:cursor-not-allowed disabled:bg-brand-primary-soft disabled:text-text-secondary ${wasAdded ? "bg-status-success hover:bg-[#166534]" : "bg-brand-primary hover:bg-brand-primary-hover"}`}
+                    type="button"
+                    aria-label={`${canAdd ? wasAdded ? "Agregar otra unidad a la solicitud" : "Agregar a solicitud" : "Agotado"}: ${product.name}`}
+                    title={canAdd ? wasAdded ? "Agregar otra unidad" : "Agregar a solicitud" : "Agotado"}
+                    disabled={!canAdd}
+                    onClick={() => {
+                      add({ id: product.id, name: product.name, slug: product.slug, price: Number(product.price), currency: product.currency, availability_status: product.availability_status });
+                      setAddedProductIds((current) => new Set(current).add(product.id));
+                      sileo.success({ title: "Agregado a tu solicitud", description: product.name });
+                    }}
+                  >
+                    {wasAdded ? (
+                      <svg aria-hidden="true" className="size-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m5 12 4 4L19 6" /></svg>
+                    ) : (
+                      <svg aria-hidden="true" className="size-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M3.75 4.5h2l2.1 10.1a2.25 2.25 0 0 0 2.2 1.79h7.4a2.25 2.25 0 0 0 2.2-1.79l1.1-5.35H7" />
+                        <circle cx="10" cy="19.5" r="1" />
+                        <circle cx="17.5" cy="19.5" r="1" />
+                        <path d="M14 9v4m-2-2h4" />
+                      </svg>
+                    )}
                   </button>
                 </div>
               </div>
