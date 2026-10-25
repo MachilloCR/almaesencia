@@ -1,6 +1,10 @@
 ---
 import RequestCart from "../components/catalog/RequestCart";
 import BaseLayout from "../layouts/BaseLayout.astro";
+import { getPublicSupabaseClient } from "../lib/supabase/public-client";
+import { getPublicProductAvailability } from "../services/public-catalog";
+
+const availability = await getPublicProductAvailability(getPublicSupabaseClient());
 ---
 
 <BaseLayout title="Mi solicitud | Alma Esencia CR">
@@ -10,7 +14,7 @@ import BaseLayout from "../layouts/BaseLayout.astro";
       <a class="text-sm font-semibold text-brand-primary hover:underline" href="/">Seguir explorando</a>
     </nav>
   </header>
-  <main class="mx-auto min-h-screen max-w-7xl px-4 py-12 sm:px-8 lg:px-12">
-    <RequestCart client:load />
+  <main class="mx-auto min-h-screen max-w-7xl px-4 py-8 sm:px-8 sm:py-12 lg:px-12">
+    <RequestCart client:load availability={availability} />
   </main>
 </BaseLayout>

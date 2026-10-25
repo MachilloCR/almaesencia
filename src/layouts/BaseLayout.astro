@@ -4,11 +4,13 @@ import "../styles/global.css";
 interface Props {
   title?: string;
   description?: string;
+  adminApp?: boolean;
 }
 
 const {
   title = "Alma Esencia CR",
   description = "Catálogo artesanal de joyería, productos Farmasi y velas personalizadas.",
+  adminApp = false,
 } = Astro.props;
 ---
 
@@ -19,6 +21,16 @@ const {
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="description" content={description} />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    {adminApp && (
+      <>
+        <link rel="manifest" href="/admin/manifest.webmanifest" />
+        <link rel="apple-touch-icon" href="/admin/icon-180.png" />
+        <meta name="theme-color" content="#86365D" />
+        <meta name="apple-mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-title" content="Alma Esencia CR" />
+        <meta name="mobile-web-app-capable" content="yes" />
+      </>
+    )}
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link

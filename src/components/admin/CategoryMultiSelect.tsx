@@ -184,9 +184,6 @@ export default function CategoryMultiSelect({ categories, selectedIds, onChange,
           </ul>
         )}
       </div>
-      <p className="mt-2 text-xs text-text-secondary" aria-live="polite">
-        Selecciona varias categorías. Usa la × para quitar cualquiera de ellas.
-      </p>
     </div>
   );
 }

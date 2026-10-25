@@ -28,6 +28,24 @@ export type PaymentMethod = "cash" | "sinpe_movil" | "bank_transfer" | "other";
 export type Database = {
   public: {
     Tables: {
+      admin_push_subscriptions: Table<
+        {
+          admin_user_id: string;
+          auth: string;
+          created_at: string;
+          endpoint: string;
+          id: string;
+          p256dh: string;
+          updated_at: string;
+        },
+        {
+          admin_user_id: string;
+          auth: string;
+          endpoint: string;
+          p256dh: string;
+          updated_at: string;
+        }
+      >;
       categories: Table<
         {
           created_at: string;
@@ -71,6 +89,7 @@ export type Database = {
           product_name_snapshot: string;
           product_slug_snapshot: string | null;
           quantity: number;
+          stock_deducted_quantity: number | null;
           unit_price_snapshot: number;
         },
         {
@@ -80,6 +99,7 @@ export type Database = {
           product_name_snapshot: string;
           product_slug_snapshot?: string | null;
           quantity: number;
+          stock_deducted_quantity?: number | null;
           unit_price_snapshot: number;
           options_snapshot?: Json;
         }
@@ -230,6 +250,48 @@ export type Database = {
           p_items: Json;
         };
         Returns: { order_id: string; order_number: string }[];
+      };
+      get_public_product_stock: {
+        Args: Record<string, never>;
+        Returns: { product_id: string; quantity: number }[];
+      };
+      create_admin_product_with_initial_stock: {
+        Args: {
+          p_category_ids: string[];
+          p_name: string;
+          p_slug: string;
+          p_description: string | null;
+          p_price: number;
+          p_availability_status: ProductAvailabilityStatus;
+          p_is_active: boolean;
+          p_initial_quantity: number;
+        };
+        Returns: Database["public"]["Tables"]["products"]["Row"][];
+      };
+      save_admin_product_details: {
+        Args: {
+          p_product_id: string;
+          p_category_ids: string[];
+          p_name: string;
+          p_description: string | null;
+          p_price: number;
+        };
+        Returns: Database["public"]["Tables"]["products"]["Row"][];
+      };
+      set_admin_product_inventory: {
+        Args: {
+          p_product_id: string;
+          p_expected_quantity: number;
+          p_quantity: number;
+          p_availability_status: ProductAvailabilityStatus;
+        };
+        Returns: {
+          product_id: string;
+          quantity: number;
+          updated_at: string;
+          availability_status: ProductAvailabilityStatus;
+          is_active: boolean;
+        }[];
       };
       is_admin: { Args: Record<string, never>; Returns: boolean };
       can_view_product_category: { Args: { p_category_id: string; p_product_id: string }; Returns: boolean };

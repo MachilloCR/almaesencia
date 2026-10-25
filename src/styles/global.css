@@ -12,6 +12,13 @@
   --color-text-secondary: #6e5d66;
   --color-accent-gold: #e6c594;
   --color-accent-rose: #d9a0b8;
+  --color-status-success: #15803d;
+  --color-status-error: #dc2626;
+  --color-status-warning: #b45309;
+  --color-status-info: #1d4ed8;
+  --color-status-process: #6d28d9;
+  --color-status-complete: #0f766e;
+  --color-status-neutral: #475569;
   --font-display: "Playfair Display", Georgia, serif;
   --font-sans: "Plus Jakarta Sans", Arial, sans-serif;
 }
