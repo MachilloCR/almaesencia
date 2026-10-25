@@ -1,0 +1,15 @@
+{
+  "id": "/admin/",
+  "name": "Alma Esencia CR | Administración",
+  "short_name": "Alma Esencia CR",
+  "description": "Panel administrativo de Alma Esencia CR",
+  "start_url": "/admin/",
+  "scope": "/admin/",
+  "display": "standalone",
+  "background_color": "#FDF8F7",
+  "theme_color": "#86365D",
+  "icons": [
+    { "src": "/admin/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/admin/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" }
+  ]
+}

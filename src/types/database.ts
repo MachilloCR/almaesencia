@@ -28,6 +28,24 @@ export type PaymentMethod = "cash" | "sinpe_movil" | "bank_transfer" | "other";
 export type Database = {
   public: {
     Tables: {
+      admin_push_subscriptions: Table<
+        {
+          admin_user_id: string;
+          auth: string;
+          created_at: string;
+          endpoint: string;
+          id: string;
+          p256dh: string;
+          updated_at: string;
+        },
+        {
+          admin_user_id: string;
+          auth: string;
+          endpoint: string;
+          p256dh: string;
+          updated_at: string;
+        }
+      >;
       categories: Table<
         {
           created_at: string;
