@@ -4,6 +4,7 @@ import type { AdminCategory } from "../../services/admin-catalog";
 import type { PublicProduct } from "../../services/public-catalog";
 import { useCartStore } from "../../stores/cart-store";
 import StatusBadge, { getStatusLabel } from "../ui/StatusBadge";
+import SearchField from "../ui/SearchField";
 
 type Props = { categories: AdminCategory[]; products: PublicProduct[] };
 
@@ -46,9 +47,7 @@ export default function CatalogProductGrid({ categories, products }: Props) {
       />
       <div className="mb-8 min-w-0 rounded-[20px] border border-border-subtle bg-surface-card p-4 sm:p-5">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-          <label className="block w-full text-xs font-semibold text-text-secondary sm:max-w-md">Buscar producto
-            <input className="mt-2 min-h-11 w-full rounded-xl border border-border-subtle bg-white px-4 text-sm font-normal text-text-primary outline-none placeholder:text-text-secondary/70 focus:border-brand-primary focus:ring-3 focus:ring-brand-primary/12" type="search" placeholder="Nombre, descripción o categoría" value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} />
-          </label>
+          <SearchField className="w-full sm:max-w-md" id="public-product-search" label="Buscar producto" placeholder="Nombre, descripción o categoría" value={searchQuery} onChange={setSearchQuery} />
           <p className="text-sm text-text-secondary">{filteredProducts.length} de {products.length} producto{products.length === 1 ? "" : "s"}</p>
         </div>
         <div className="mt-5">
@@ -114,7 +113,7 @@ export default function CatalogProductGrid({ categories, products }: Props) {
                     title={canAdd ? wasAdded ? "Agregar otra unidad" : "Agregar a solicitud" : "Agotado"}
                     disabled={!canAdd}
                     onClick={() => {
-                      add({ id: product.id, name: product.name, slug: product.slug, price: Number(product.price), currency: product.currency, availability_status: product.availability_status });
+                      add({ id: product.id, name: product.name, slug: product.slug, price: Number(product.price), currency: product.currency, availability_status: product.availability_status, imageUrl: product.image?.url ?? null, imageAltText: product.image?.altText || product.name });
                       setAddedProductIds((current) => new Set(current).add(product.id));
                       sileo.success({ title: "Agregado a tu solicitud", description: product.name });
                     }}

@@ -133,7 +133,7 @@ export default function ProductInventoryControl({ item, product, onEdit, onUpdat
     <div className="mt-auto pt-3">
       <div className="flex flex-wrap gap-2">
         {editButton}
-        {item.quantity === 0 && (product.availability_status !== "on_order" || !product.is_active) && <button className={`${actionButtonClass} bg-status-warning text-white hover:bg-[#92400E]`} type="button" onClick={() => void save(0, "on_order", "Producto disponible por encargo")} disabled={saving || quantity !== String(item.quantity)}>
+        {item.quantity === 0 && (product.availability_status !== "on_order" || !product.is_active) && <button className={`${actionButtonClass} border border-status-warning bg-transparent text-status-warning hover:bg-[#FEF3C7]`} type="button" onClick={() => void save(0, "on_order", "Producto disponible por encargo")} disabled={saving || quantity !== String(item.quantity)}>
           <svg aria-hidden="true" className="size-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></svg>
           Por encargo
         </button>}

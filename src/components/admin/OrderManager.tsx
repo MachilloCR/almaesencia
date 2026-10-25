@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Toaster, sileo } from "sileo";
 import type { PaymentMethod, PaymentStatus, ProductAvailabilityStatus } from "../../types/database";
 import StatusBadge from "../ui/StatusBadge";
+import SearchField from "../ui/SearchField";
 
 type Item = { id: string; order_id: string; product_name_snapshot: string; quantity: number; stock_deducted_quantity: number | null; unit_price_snapshot: number; availability_snapshot: ProductAvailabilityStatus };
 type Payment = {
@@ -277,10 +278,7 @@ export default function OrderManager({ initialOrders }: Props) {
     <section className="mt-7">
       <Toaster position="top-right" options={{ fill: "#fff", roundness: 16 }} />
       <div className="sticky top-0 z-10 -mx-4 space-y-3 border-b border-border-subtle bg-surface/95 px-4 py-4 backdrop-blur sm:static sm:mx-0 sm:border-0 sm:bg-transparent sm:px-0">
-        <label className="block">
-          <span className="sr-only">Buscar por cliente, teléfono o número de pedido</span>
-          <input className={`${fieldClass} !mt-0 rounded-full`} type="search" placeholder="Buscar por cliente, teléfono o número…" value={search} onChange={event => setSearch(event.target.value)} />
-        </label>
+        <SearchField id="admin-order-search" label="Buscar pedido" placeholder="Cliente, teléfono o número de pedido" value={search} onChange={setSearch} />
         <div className="scrollbar-none flex gap-2 overflow-x-auto pb-1" aria-label="Filtrar pedidos">
           {([
             ["all", "Todos", counts.all], ["review", "Por revisar", counts.review], ["process", "En proceso", counts.process], ["delivery", "Por entregar", counts.delivery],
@@ -365,7 +363,7 @@ export default function OrderManager({ initialOrders }: Props) {
         const progress = selected.confirmed_total ? Math.min((paid / selected.confirmed_total) * 100, 100) : 0;
         const totalDraft = totalDrafts[selected.id] ?? (selected.confirmed_total === null ? "" : String(selected.confirmed_total));
         return (
-          <div className="fixed inset-0 z-30 flex items-end justify-center bg-[#2C1A23]/45 backdrop-blur-[4px] sm:items-center sm:p-5" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget && saving !== selected.id) setSelectedId(null); }}>
+          <div className="fixed inset-0 z-50 flex items-end justify-center bg-[#2C1A23]/45 backdrop-blur-[4px] sm:items-center sm:p-5" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget && saving !== selected.id) setSelectedId(null); }}>
             <section role="dialog" aria-modal="true" aria-labelledby="order-dialog-title" className="max-h-[94dvh] w-full overflow-y-auto rounded-t-[24px] bg-surface p-4 shadow-[0_20px_40px_-8px_rgba(44,26,35,0.16)] sm:max-w-2xl sm:rounded-[24px] sm:p-6">
               <div className="flex items-start justify-between gap-3">
                 <div><p className="text-xs font-semibold text-brand-primary">Pedido #{selected.order_number}</p><h2 id="order-dialog-title" className="mt-1 font-display text-2xl font-semibold">{selected.customer_name}</h2><p className="mt-1 text-xs text-text-secondary">{dateTime(selected.created_at)} · {selected.customer_phone}</p></div>
@@ -422,7 +420,7 @@ export default function OrderManager({ initialOrders }: Props) {
                 })}</div></fieldset>)}
                 <div className="grid grid-cols-1 gap-2 rounded-2xl bg-surface-soft p-3 text-xs sm:grid-cols-3"><p>Pedido<span className="mt-1 block"><StatusBadge context="order" status={(statusDrafts[selected.id] ?? selected).order_status} size="compact" /></span></p><p>Proveedor<span className="mt-1 block"><StatusBadge context="procurement" status={(statusDrafts[selected.id] ?? selected).procurement_status} size="compact" /></span></p><p>Entrega<span className="mt-1 block"><StatusBadge context="fulfillment" status={(statusDrafts[selected.id] ?? selected).fulfillment_status} size="compact" /></span></p></div>
                 {statusWarnings({ ...selected, ...(statusDrafts[selected.id] ?? {}) }).length > 0 && <div className="space-y-2" aria-label="Avisos de seguimiento">{statusWarnings({ ...selected, ...(statusDrafts[selected.id] ?? {}) }).map(warning => <p className="rounded-xl border border-[#FDE68A] bg-[#FEF3C7] px-3 py-2.5 text-sm text-[#754A0B]" role="status" key={warning}>{warning}</p>)}</div>}
-                <button className={`${buttonClass} w-full bg-brand-primary text-white`} type="button" disabled={saving === selected.id || !statusDrafts[selected.id] || fields.every(field => statusDrafts[selected.id]?.[field.key] === selected[field.key])} onClick={() => void saveStatuses(selected)}>{saving === selected.id ? "Guardando…" : selected.order_status === "pending_review" && statusDrafts[selected.id]?.order_status === "confirmed" ? selected.items.some(item => item.availability_snapshot === "in_stock") ? "Confirmar pedido y descontar stock" : "Confirmar pedido" : "Guardar seguimiento"}</button>
+                <button className={`${buttonClass} w-full bg-brand-primary text-white`} type="button" disabled={saving === selected.id || !statusDrafts[selected.id] || fields.every(field => statusDrafts[selected.id]?.[field.key] === selected[field.key])} onClick={() => void saveStatuses(selected)}>{saving === selected.id ? "Guardando…" : selected.order_status === "pending_review" && statusDrafts[selected.id]?.order_status === "confirmed" ? "Confirmar pedido" : "Guardar seguimiento"}</button>
                 <div className="border-t border-border-subtle pt-4">
                   <h3 className="font-semibold">Historial de cambios</h3>
                   {selected.history.length === 0 ? <p className="mt-2 text-sm text-text-secondary">Aún no hay cambios registrados.</p> : <ol className="mt-3 space-y-3">{selected.history.map(change => <li key={change.id} className="relative border-l border-border-subtle pb-1 pl-4 text-sm last:pb-0"><span className="absolute -left-[5px] top-1 h-2.5 w-2.5 rounded-full bg-brand-primary" aria-hidden="true" /><div className="flex flex-wrap justify-between gap-2"><strong>{historyTypeLabels[change.status_type] ?? "Cambio"}: {change.previous_value ? `${labels[change.previous_value] ?? change.previous_value} → ` : ""}{labels[change.next_value] ?? change.next_value}</strong><time className="text-xs text-text-secondary" dateTime={change.created_at}>{dateTime(change.created_at)}</time></div>{change.note && <p className="mt-1 text-text-secondary">{change.note}</p>}</li>)}</ol>}

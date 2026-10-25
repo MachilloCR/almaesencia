@@ -41,12 +41,15 @@ const orders = (ordersResult.data ?? []).map((order) => ({
   payments: (paymentsResult.data ?? []).filter((payment) => payment.order_id === order.id),
   history: (historyResult.data ?? []).filter((change) => change.order_id === order.id),
 }));
+const pendingReviewCount = ordersResult.error
+  ? null
+  : (ordersResult.data ?? []).filter((order) => order.order_status === "pending_review").length;
 ---
 
 <BaseLayout title="Pedidos | Alma Esencia CR">
   <div class="min-h-screen lg:grid lg:grid-cols-[15rem_minmax(0,1fr)]">
-    <AdminSidebar active="orders" />
-    <main class="min-w-0 px-4 py-10 sm:px-8 lg:px-10 xl:px-14">
+    <AdminSidebar active="orders" pendingReviewCount={pendingReviewCount} />
+    <main class="min-w-0 px-4 pt-10 pb-28 sm:px-8 md:py-10 lg:px-10 xl:px-14">
     <header class="border-b border-border-subtle pb-7">
       <div>
         <p class="text-xs font-semibold tracking-[0.14em] text-brand-primary uppercase">Alma Esencia CR</p>

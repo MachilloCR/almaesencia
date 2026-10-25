@@ -9,6 +9,8 @@ export type CartProduct = {
   price: number;
   currency: string;
   availability_status: ProductAvailabilityStatus;
+  imageUrl?: string | null;
+  imageAltText?: string;
 };
 
 export type CartItem = CartProduct & { quantity: number };

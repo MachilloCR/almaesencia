@@ -15,6 +15,7 @@ const statusStyles: Record<StatusContext, Record<string, StatusStyle>> = {
     on_order: { label: "Por encargo", color: "bg-status-warning", icon: "clock" },
     out_of_stock: { label: "Agotado", color: "bg-status-error", icon: "x" },
     inactive: { label: "Inactivo", color: "bg-status-neutral", icon: "x" },
+    unavailable: { label: "No disponible", color: "bg-status-neutral", icon: "x" },
   },
   order: {
     pending_review: { label: "Pendiente de revisión", color: "bg-status-warning", icon: "clock" },
