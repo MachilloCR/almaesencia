@@ -1,0 +1,40 @@
+---
+import AdminPushSettings from "../../components/admin/AdminPushSettings";
+import AdminSidebar from "../../components/admin/AdminSidebar.astro";
+import BaseLayout from "../../layouts/BaseLayout.astro";
+
+const { supabase, user } = Astro.locals;
+if (!user) return Astro.redirect("/admin/login");
+
+const { data: profile } = await supabase.from("profiles").select("role").eq("id", user.id).maybeSingle();
+if (profile?.role !== "admin") {
+  await supabase.auth.signOut();
+  return Astro.redirect("/admin/login?error=unauthorized");
+}
+
+const pendingOrdersResult = await supabase.from("orders").select("id", { count: "exact", head: true }).eq("order_status", "pending_review");
+if (pendingOrdersResult.error) {
+  console.error("No fue posible consultar los pedidos pendientes de revisión", {
+    code: pendingOrdersResult.error.code,
+    message: pendingOrdersResult.error.message,
+  });
+}
+const pendingReviewCount = pendingOrdersResult.error ? null : pendingOrdersResult.count;
+---
+
+<BaseLayout title="Ajustes | Alma Esencia CR" adminApp>
+  <div class="min-h-screen lg:grid lg:grid-cols-[15rem_minmax(0,1fr)]">
+    <AdminSidebar active="settings" pendingReviewCount={pendingReviewCount} />
+    <main class="min-w-0 px-4 pt-10 pb-28 sm:px-8 md:py-10 lg:px-10 xl:px-14">
+      <header class="border-b border-border-subtle pb-7">
+        <p class="text-xs font-semibold tracking-[0.14em] text-brand-primary uppercase">Alma Esencia CR</p>
+        <h1 class="mt-3 font-display text-3xl font-semibold text-text-primary sm:text-4xl">Ajustes</h1>
+        <p class="mt-2 text-sm leading-6 text-text-secondary">Configuración de la aplicación y de este dispositivo.</p>
+      </header>
+      <section class="mt-8 max-w-3xl">
+        <h2 class="mb-3 font-display text-2xl font-semibold text-text-primary">Aplicación y avisos</h2>
+        <AdminPushSettings client:load />
+      </section>
+    </main>
+  </div>
+</BaseLayout>

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Toaster, sileo } from "sileo";
 import type { PaymentMethod, PaymentStatus, ProductAvailabilityStatus } from "../../types/database";
+import { createOrderWhatsAppMessage, createWhatsAppUrl } from "../../lib/whatsapp";
 import StatusBadge from "../ui/StatusBadge";
 import SearchField from "../ui/SearchField";
 
@@ -119,8 +120,8 @@ const historyTypeLabels: Record<string, string> = {
 };
 
 function whatsappUrl(order: Order) {
-  const phone = order.customer_phone.replace(/\D/g, "");
-  return `https://wa.me/${phone}?text=${encodeURIComponent(`Hola, te contactamos por tu solicitud ${order.order_number} de Alma Esencia CR.`)}`;
+  const message = createOrderWhatsAppMessage(order.order_number, order.items);
+  return createWhatsAppUrl(order.customer_phone, message);
 }
 
 export default function OrderManager({ initialOrders }: Props) {
@@ -138,6 +139,7 @@ export default function OrderManager({ initialOrders }: Props) {
   const [adminNoteDrafts, setAdminNoteDrafts] = useState<Record<string, string>>({});
 
   const selected = orders.find(order => order.id === selectedId) ?? null;
+  const selectedWhatsAppUrl = selected ? whatsappUrl(selected) : null;
   useEffect(() => {
     if (!selectedId) return;
     function onKeyDown(event: KeyboardEvent) {
@@ -147,7 +149,8 @@ export default function OrderManager({ initialOrders }: Props) {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [selectedId, saving]);
   const counts = useMemo(() => ({
-    all: orders.length,
+    all: orders.filter(order => order.order_status !== "cancelled").length,
+    cancelled: orders.filter(order => order.order_status === "cancelled").length,
     review: orders.filter(order => order.order_status === "pending_review").length,
     process: orders.filter(order => !["pending_review", "cancelled", "completed"].includes(order.order_status)).length,
     delivery: orders.filter(order => order.order_status !== "cancelled" && order.order_status !== "completed" && order.fulfillment_status === "ready").length,
@@ -156,7 +159,8 @@ export default function OrderManager({ initialOrders }: Props) {
     const query = search.trim().toLocaleLowerCase("es-CR");
     return orders.filter(order => {
       const matchesSearch = !query || order.customer_name.toLocaleLowerCase("es-CR").includes(query) || order.order_number.toLocaleLowerCase("es-CR").includes(query) || order.customer_phone.includes(query);
-      const matchesFilter = filter === "all"
+      const matchesFilter = (filter === "all" && order.order_status !== "cancelled")
+        || (filter === "cancelled" && order.order_status === "cancelled")
         || (filter === "review" && order.order_status === "pending_review")
         || (filter === "process" && !["pending_review", "cancelled", "completed"].includes(order.order_status))
         || (filter === "delivery" && order.order_status !== "cancelled" && order.order_status !== "completed" && order.fulfillment_status === "ready");
@@ -281,7 +285,7 @@ export default function OrderManager({ initialOrders }: Props) {
         <SearchField id="admin-order-search" label="Buscar pedido" placeholder="Cliente, teléfono o número de pedido" value={search} onChange={setSearch} />
         <div className="scrollbar-none flex gap-2 overflow-x-auto pb-1" aria-label="Filtrar pedidos">
           {([
-            ["all", "Todos", counts.all], ["review", "Por revisar", counts.review], ["process", "En proceso", counts.process], ["delivery", "Por entregar", counts.delivery],
+            ["all", "Todos", counts.all], ["review", "Por revisar", counts.review], ["process", "En proceso", counts.process], ["delivery", "Por entregar", counts.delivery], ["cancelled", "Cancelados", counts.cancelled],
           ] as const).map(([value, label, count]) => (
             <button key={value} type="button" onClick={() => setFilter(value)} aria-pressed={filter === value} className={`${buttonClass} shrink-0 border px-4 ${filter === value ? "border-brand-primary bg-brand-primary text-white" : "border-border-subtle bg-white text-text-secondary hover:bg-brand-primary-soft"}`}>
               {label}<span className={`ml-2 rounded-full px-2 py-0.5 text-xs ${filter === value ? "bg-white/20" : "bg-brand-primary-soft text-brand-primary"}`}>{count}</span>
@@ -297,6 +301,7 @@ export default function OrderManager({ initialOrders }: Props) {
       ) : (
         <ul className="grid gap-4 lg:grid-cols-2 2xl:grid-cols-3">
           {visibleOrders.map(order => {
+            const contactUrl = whatsappUrl(order);
             const paid = totalPaid(order);
             const balance = order.confirmed_total === null ? null : Math.max(Math.round((order.confirmed_total - paid) * 100) / 100, 0);
             const progress = order.confirmed_total ? Math.min((paid / order.confirmed_total) * 100, 100) : 0;
@@ -346,10 +351,14 @@ export default function OrderManager({ initialOrders }: Props) {
                 <p className="sr-only">{itemCount} productos en total.</p>
                 <div className="mt-3 grid grid-cols-[minmax(0,1fr)_auto] gap-2">
                   <button className={`${buttonClass} min-w-0 bg-brand-primary text-white hover:bg-brand-primary-hover`} type="button" onClick={() => openOrder(order)}>Gestionar</button>
-                  <a className={`${buttonClass} gap-2 border border-[#16A765] px-4 text-[#087D4B] hover:bg-[#EAF8F0]`} href={whatsappUrl(order)} target="_blank" rel="noreferrer" aria-label={`Contactar por WhatsApp a ${order.customer_name}`}>
-                    <svg aria-hidden="true" className="size-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M20.5 11.5a8.5 8.5 0 0 1-12.4 7.5L3 20l1.1-4.8a8.5 8.5 0 1 1 16.4-3.7Z" /><path d="M8.5 8.5c.5 2.3 2.7 4.5 5 5l1.4-1.2 2 1.1c-.4 1.7-1.5 2.6-3.2 2.4-3.8-.5-6.9-3.6-7.4-7.4-.2-1.7.7-2.8 2.4-3.2l1.1 2-1.3 1.3Z" /></svg>
-                    WhatsApp
-                  </a>
+                  {contactUrl ? (
+                    <a className={`${buttonClass} gap-2 border border-[#16A765] px-4 text-[#087D4B] hover:bg-[#EAF8F0]`} href={contactUrl} target="_blank" rel="noreferrer" aria-label={`Contactar por WhatsApp a ${order.customer_name}`}>
+                      <svg aria-hidden="true" className="size-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M20.5 11.5a8.5 8.5 0 0 1-12.4 7.5L3 20l1.1-4.8a8.5 8.5 0 1 1 16.4-3.7Z" /><path d="M8.5 8.5c.5 2.3 2.7 4.5 5 5l1.4-1.2 2 1.1c-.4 1.7-1.5 2.6-3.2 2.4-3.8-.5-6.9-3.6-7.4-7.4-.2-1.7.7-2.8 2.4-3.2l1.1 2-1.3 1.3Z" /></svg>
+                      WhatsApp
+                    </a>
+                  ) : (
+                    <span className={`${buttonClass} gap-2 border border-border-subtle px-4 text-text-secondary opacity-60`} aria-disabled="true" title="Revisa el número de teléfono del cliente">WhatsApp no disponible</span>
+                  )}
                 </div>
               </li>
             );
@@ -385,7 +394,7 @@ export default function OrderManager({ initialOrders }: Props) {
                   <button className={`${buttonClass} mt-3 border border-brand-primary text-brand-primary hover:bg-white`} type="button" disabled={saving === selected.id || !totalDraft} onClick={() => void saveConfirmedTotal(selected)}>{saving === selected.id ? "Guardando…" : "Guardar precio acordado"}</button>
                 </div>
                 <div className="rounded-2xl bg-white p-4"><div className="flex justify-between text-sm"><span>Pagado</span><strong>{money(paid)}</strong></div><div className="mt-2 flex justify-between text-sm"><span>Saldo pendiente</span><strong>{balance === null ? "Confirma el precio" : money(balance)}</strong></div>{selected.confirmed_total !== null && <><div className="mt-3 h-2 overflow-hidden rounded-full bg-brand-primary-soft" role="progressbar" aria-label="Progreso de pago" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(progress)}><div className="h-full rounded-full bg-[#31B779]" style={{ width: `${progress}%` }} /></div><p className="mt-1 text-right text-xs text-text-secondary">{Math.round(progress)}% pagado</p></>}</div>
-                <div className="flex gap-2"><button className={`${buttonClass} flex-1 bg-brand-primary text-white`} type="button" onClick={() => setSection("payments")}>Ver pagos</button><a className={`${buttonClass} flex-1 border border-[#16A765] text-[#087D4B]`} href={whatsappUrl(selected)} target="_blank" rel="noreferrer">WhatsApp</a></div>
+                <div className="flex gap-2"><button className={`${buttonClass} flex-1 bg-brand-primary text-white`} type="button" onClick={() => setSection("payments")}>Ver pagos</button>{selectedWhatsAppUrl ? <a className={`${buttonClass} flex-1 border border-[#16A765] text-[#087D4B]`} href={selectedWhatsAppUrl} target="_blank" rel="noreferrer">WhatsApp</a> : <span className={`${buttonClass} flex-1 border border-border-subtle text-center text-text-secondary opacity-60`} aria-disabled="true" title="Revisa el número de teléfono del cliente">WhatsApp no disponible</span>}</div>
               </div>}
 
               {section === "payments" && <div className="space-y-5 py-5">
