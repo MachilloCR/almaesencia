@@ -4,6 +4,8 @@ import type { PaymentMethod, PaymentStatus, ProductAvailabilityStatus } from "..
 import { createOrderWhatsAppMessage, createWhatsAppUrl } from "../../lib/whatsapp";
 import StatusBadge from "../ui/StatusBadge";
 import SearchField from "../ui/SearchField";
+import AdminStatusBadgeMenu, { type AdminStatusOption } from "./AdminStatusBadgeMenu";
+import AdminConfirmDialog from "./AdminConfirmDialog";
 
 type Item = { id: string; order_id: string; product_name_snapshot: string; quantity: number; stock_deducted_quantity: number | null; unit_price_snapshot: number; availability_snapshot: ProductAvailabilityStatus };
 type Payment = {
@@ -44,8 +46,14 @@ type Order = {
 };
 type Props = { initialOrders: Order[] };
 type StatusKey = "order_status" | "procurement_status" | "fulfillment_status";
-type StatusDraft = Pick<Order, StatusKey>;
-type Section = "summary" | "payments" | "tracking" | "notes";
+type Section = "summary" | "payments" | "notes";
+type ConfirmationRequest = {
+  title: string;
+  description: string;
+  confirmLabel: string;
+  tone: "primary" | "danger";
+  onConfirm: () => void;
+};
 type PaymentResponse = {
   payment: {
     payment_id: string;
@@ -97,22 +105,43 @@ function totalPaid(order: Order) {
   return order.payments.reduce((total, payment) => total + Math.round(Number(payment.amount) * 100), 0) / 100;
 }
 
-function statusWarnings(order: Order) {
-  const warnings: string[] = [];
-  const deliveryStarted = order.fulfillment_status === "ready" || order.fulfillment_status === "delivered";
-  if (deliveryStarted && order.order_status === "pending_review") {
-    warnings.push("La entrega avanzó, pero el pedido sigue pendiente de revisión.");
-  }
-  if (order.order_status === "pending_review" && order.confirmed_at !== null) {
-    warnings.push("Este pedido ya fue confirmado antes. Revisa el inventario manualmente antes de cambiar su estado.");
-  }
-  if (deliveryStarted && ["pending_supplier", "ordered"].includes(order.procurement_status)) {
-    warnings.push("La entrega está marcada como lista o entregada, pero aún hay productos por gestionar con el proveedor.");
-  }
-  if (order.fulfillment_status === "delivered" && order.payment_status !== "paid") {
-    warnings.push("El pedido figura como entregado y todavía tiene saldo pendiente.");
-  }
-  return warnings;
+function canChangeOrderStatus(order: Order, value: string) {
+  const terminal = order.order_status === "cancelled" || order.order_status === "completed";
+  if (terminal && value !== order.order_status) return false;
+  if (order.order_status === "confirmed" && value === "pending_review") return false;
+  if (order.order_status === "pending_review" && value === "completed") return false;
+  if (order.order_status === "pending_review" && order.confirmed_at !== null && value === "confirmed") return false;
+  if (value === "completed" && (order.fulfillment_status !== "delivered" || order.payment_status !== "paid")) return false;
+  return true;
+}
+
+function statusContext(key: StatusKey) {
+  if (key === "order_status") return "order" as const;
+  if (key === "procurement_status") return "procurement" as const;
+  return "fulfillment" as const;
+}
+
+function getStatusOptions(order: Order, key: StatusKey): AdminStatusOption[] {
+  const field = fields.find(item => item.key === key);
+  if (!field) return [];
+
+  return field.values.map(value => {
+    let disabledReason: string | undefined;
+    if (key === "order_status" && value !== order.order_status) {
+      if (order.order_status === "cancelled" || order.order_status === "completed") disabledReason = "Pedido finalizado";
+      else if (order.order_status === "confirmed" && value === "pending_review") disabledReason = "No se puede volver a revisión";
+      else if (order.order_status === "pending_review" && value === "confirmed" && order.confirmed_at !== null) disabledReason = "Este pedido ya fue confirmado";
+      else if (order.order_status === "pending_review" && value === "completed") disabledReason = "Confirma el pedido primero";
+      else if (value === "completed" && (order.fulfillment_status !== "delivered" || order.payment_status !== "paid")) disabledReason = "Requiere entrega y pago completos";
+    }
+
+    return {
+      value,
+      label: labels[value] ?? value,
+      disabled: value === order[key] || (key === "order_status" && !canChangeOrderStatus(order, value)),
+      disabledReason,
+    };
+  });
 }
 
 const historyTypeLabels: Record<string, string> = {
@@ -127,8 +156,8 @@ function whatsappUrl(order: Order) {
 export default function OrderManager({ initialOrders }: Props) {
   const [orders, setOrders] = useState(initialOrders);
   const [saving, setSaving] = useState<string | null>(null);
+  const [confirmation, setConfirmation] = useState<ConfirmationRequest | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [statusDrafts, setStatusDrafts] = useState<Record<string, StatusDraft>>({});
   const [section, setSection] = useState<Section>("summary");
   const [filter, setFilter] = useState("all");
   const [search, setSearch] = useState("");
@@ -168,20 +197,6 @@ export default function OrderManager({ initialOrders }: Props) {
     });
   }, [orders, search, filter]);
 
-  function changeStatus(orderId: string, key: StatusKey, value: string) {
-    const current = orders.find(order => order.id === orderId);
-    if (!current) return;
-    setStatusDrafts(drafts => ({
-      ...drafts,
-      [orderId]: {
-        order_status: drafts[orderId]?.order_status ?? current.order_status,
-        procurement_status: drafts[orderId]?.procurement_status ?? current.procurement_status,
-        fulfillment_status: drafts[orderId]?.fulfillment_status ?? current.fulfillment_status,
-        [key]: value,
-      },
-    }));
-  }
-
   async function refreshOrderHistory(orderId: string) {
     try {
       const result = await fetch(`/api/admin/orders?orderId=${encodeURIComponent(orderId)}`)
@@ -192,17 +207,70 @@ export default function OrderManager({ initialOrders }: Props) {
     }
   }
 
-  async function saveStatuses(order: Order) {
-    const draft = statusDrafts[order.id];
-    if (!draft) return;
+  async function updateStatus(order: Order, key: StatusKey, value: string, confirmed = false) {
+    if (saving === order.id || order[key] === value) return;
+    if (key === "order_status" && !canChangeOrderStatus(order, value)) return;
+
+    if (key === "order_status" && value === "confirmed" && order.order_status === "pending_review" && order.confirmed_at === null) {
+      const stockUnits = order.items.filter(item => item.availability_snapshot === "in_stock").reduce((total, item) => total + item.quantity, 0);
+      if (!confirmed) {
+        setConfirmation({
+          title: "Confirmar pedido",
+          description: `Al confirmar se descontarán ${stockUnits} unidades que estaban en stock al solicitar. Los artículos por encargo no descontarán inventario.`,
+          confirmLabel: "Confirmar pedido",
+          tone: "primary",
+          onConfirm: () => { setConfirmation(null); void updateStatus(order, key, value, true); },
+        });
+        return;
+      }
+    }
+    if (key === "order_status" && value === "cancelled") {
+      const message = order.order_status === "confirmed"
+        ? "Cancelar no devuelve existencias automáticamente. Si conservas las unidades físicas, repónlas mediante un ajuste manual en inventario."
+        : "Esta acción cancelará el pedido.";
+      if (!confirmed) {
+        setConfirmation({
+          title: "Cancelar pedido",
+          description: message,
+          confirmLabel: "Cancelar pedido",
+          tone: "danger",
+          onConfirm: () => { setConfirmation(null); void updateStatus(order, key, value, true); },
+        });
+        return;
+      }
+    }
+    if (key === "order_status" && value === "completed" && !confirmed) {
+      setConfirmation({
+        title: "Completar pedido",
+        description: "Al completar el pedido no podrás reabrirlo desde el panel.",
+        confirmLabel: "Completar pedido",
+        tone: "primary",
+        onConfirm: () => { setConfirmation(null); void updateStatus(order, key, value, true); },
+      });
+      return;
+    }
+
+    const nextStatuses: Record<StatusKey, string> = {
+      order_status: order.order_status,
+      procurement_status: order.procurement_status,
+      fulfillment_status: order.fulfillment_status,
+    };
+    nextStatuses[key] = value;
+    const selectedField = fields.find(field => field.key === key);
+    const successTitle = key === "order_status" && value === "confirmed"
+      ? "Pedido confirmado"
+      : key === "order_status" && value === "cancelled"
+        ? "Pedido cancelado"
+        : `${selectedField?.label ?? "Estado"} actualizado`;
+
     setSaving(order.id);
     try {
       const result = await sileo.promise(
         fetch("/api/admin/orders", {
           method: "PATCH", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ id: order.id, orderStatus: draft.order_status, procurementStatus: draft.procurement_status, fulfillmentStatus: draft.fulfillment_status }),
+          body: JSON.stringify({ id: order.id, orderStatus: nextStatuses.order_status, procurementStatus: nextStatuses.procurement_status, fulfillmentStatus: nextStatuses.fulfillment_status }),
         }).then(response => readResponse<{ order: Partial<Order>; stockMovements: Pick<Item, "id" | "stock_deducted_quantity">[] | null }>(response)),
-        { loading: { title: "Actualizando pedido…" }, success: { title: draft.order_status === "confirmed" && order.order_status === "pending_review" ? "Pedido confirmado" : "Pedido actualizado" }, error: error => ({ title: "No se pudo actualizar", description: String(error) }) },
+        { loading: { title: "Actualizando estado…" }, success: { title: successTitle }, error: error => ({ title: "No se pudo actualizar", description: String(error) }) },
       );
       const deductedByItem = new Map(result.stockMovements?.map(item => [item.id, item.stock_deducted_quantity]) ?? []);
       setOrders(current => current.map(item => item.id === order.id ? {
@@ -210,19 +278,27 @@ export default function OrderManager({ initialOrders }: Props) {
         ...result.order,
         items: item.items.map(line => deductedByItem.has(line.id) ? { ...line, stock_deducted_quantity: deductedByItem.get(line.id) ?? null } : line),
       } : item));
-      setStatusDrafts(current => { const next = { ...current }; delete next[order.id]; return next; });
       await refreshOrderHistory(order.id);
     } catch { /* Sileo muestra el error. */ } finally { setSaving(null); }
   }
 
-  async function saveConfirmedTotal(order: Order) {
+  async function saveConfirmedTotal(order: Order, confirmed = false) {
     const draft = totalDrafts[order.id] ?? (order.confirmed_total === null ? "" : String(order.confirmed_total));
     const confirmedTotal = Number(draft);
     if (!Number.isFinite(confirmedTotal) || confirmedTotal <= 0) {
       sileo.error({ title: "Revisa el monto", description: "El total confirmado debe ser mayor que cero." });
       return;
     }
-    if (order.confirmed_total !== null && confirmedTotal !== order.confirmed_total && !window.confirm(`¿Confirmas cambiar el total de ${money(order.confirmed_total)} a ${money(confirmedTotal)}?`)) return;
+    if (order.confirmed_total !== null && confirmedTotal !== order.confirmed_total && !confirmed) {
+      setConfirmation({
+        title: "Cambiar precio acordado",
+        description: `El total pasará de ${money(order.confirmed_total)} a ${money(confirmedTotal)}.`,
+        confirmLabel: "Guardar nuevo precio",
+        tone: "primary",
+        onConfirm: () => { setConfirmation(null); void saveConfirmedTotal(order, true); },
+      });
+      return;
+    }
     setSaving(order.id);
     try {
       const result = await sileo.promise(
@@ -273,7 +349,6 @@ export default function OrderManager({ initialOrders }: Props) {
   function openOrder(order: Order) {
     setSelectedId(order.id);
     setSection("summary");
-    setStatusDrafts(current => ({ ...current, [order.id]: { order_status: order.order_status, procurement_status: order.procurement_status, fulfillment_status: order.fulfillment_status } }));
     setTotalDrafts(current => ({ ...current, [order.id]: order.confirmed_total === null ? "" : String(order.confirmed_total) }));
     setAdminNoteDrafts(current => ({ ...current, [order.id]: order.admin_notes ?? "" }));
   }
@@ -281,6 +356,7 @@ export default function OrderManager({ initialOrders }: Props) {
   return (
     <section className="mt-7">
       <Toaster position="top-right" options={{ fill: "var(--color-surface-card)", roundness: 16, styles: { title: "text-text-primary!", description: "text-text-secondary!" } }} />
+      {confirmation && <AdminConfirmDialog open title={confirmation.title} description={confirmation.description} confirmLabel={confirmation.confirmLabel} tone={confirmation.tone} onCancel={() => setConfirmation(null)} onConfirm={confirmation.onConfirm} />}
       <div className="sticky top-0 z-10 -mx-4 space-y-3 border-b border-border-subtle bg-surface/95 px-4 py-4 backdrop-blur sm:static sm:mx-0 sm:border-0 sm:bg-transparent sm:px-0">
         <SearchField id="admin-order-search" label="Buscar pedido" placeholder="Cliente, teléfono o número de pedido" value={search} onChange={setSearch} variant="admin" />
         <div className="scrollbar-none flex gap-2 overflow-x-auto pb-1" aria-label="Filtrar pedidos">
@@ -313,7 +389,7 @@ export default function OrderManager({ initialOrders }: Props) {
                     <p className="text-xs leading-5"><span className="font-semibold text-brand-primary">#{order.order_number}</span><span className="text-text-secondary"> · {dateTime(order.created_at)}</span></p>
                     <h2 className="mt-1 truncate text-lg font-semibold leading-6">{order.customer_name}</h2>
                   </div>
-                  <StatusBadge context="order" status={order.order_status} />
+                  <AdminStatusBadgeMenu context="order" label="pedido" status={order.order_status} options={getStatusOptions(order, "order_status")} disabled={saving === order.id} busy={saving === order.id} onChange={value => void updateStatus(order, "order_status", value)} />
                 </div>
 
                 <div className="mt-4 space-y-2.5 text-sm">
@@ -338,14 +414,14 @@ export default function OrderManager({ initialOrders }: Props) {
                 </div>
 
                 <div className="mt-4 divide-y divide-border-subtle border-y border-border-subtle text-sm">
-                  {fields.filter(field => field.key !== "order_status").map(field => <div className="flex min-h-14 min-w-0 items-center justify-between gap-3 py-3" key={field.key}>
+                  {fields.filter(field => field.key !== "order_status").map(field => <div className="flex min-h-14 min-w-0 flex-wrap items-center justify-between gap-2 py-3" key={field.key}>
                     <span className="flex min-w-0 items-center gap-2 text-text-secondary">
                       <svg aria-hidden="true" className="size-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                         {field.key === "procurement_status" ? <><path d="m12 2 9 5-9 5-9-5 9-5Z" /><path d="M3 7v10l9 5 9-5V7m-9 5v10" /></> : <><path d="M3 7h11v10H3zM14 10h4l3 3v4h-7z" /><circle cx="7" cy="18" r="2" /><circle cx="18" cy="18" r="2" /></>}
                       </svg>
                       {field.label}
                     </span>
-                    <StatusBadge context={field.key === "procurement_status" ? "procurement" : "fulfillment"} status={order[field.key]} size="compact" />
+                    <AdminStatusBadgeMenu context={statusContext(field.key)} label={field.label.toLocaleLowerCase("es-CR")} status={order[field.key]} options={getStatusOptions(order, field.key)} disabled={saving === order.id} busy={saving === order.id} onChange={value => void updateStatus(order, field.key, value)} />
                   </div>)}
                 </div>
                 <p className="sr-only">{itemCount} productos en total.</p>
@@ -369,7 +445,6 @@ export default function OrderManager({ initialOrders }: Props) {
       {selected && (() => {
         const paid = totalPaid(selected);
         const balance = selected.confirmed_total === null ? null : Math.max(Math.round((selected.confirmed_total - paid) * 100) / 100, 0);
-        const progress = selected.confirmed_total ? Math.min((paid / selected.confirmed_total) * 100, 100) : 0;
         const totalDraft = totalDrafts[selected.id] ?? (selected.confirmed_total === null ? "" : String(selected.confirmed_total));
         return (
           <div className="fixed inset-0 z-50 flex items-end justify-center bg-admin-overlay/45 backdrop-blur-[4px] sm:items-center sm:p-5" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget && saving !== selected.id) setSelectedId(null); }}>
@@ -378,23 +453,26 @@ export default function OrderManager({ initialOrders }: Props) {
                 <div><p className="text-xs font-semibold text-brand-primary">Pedido #{selected.order_number}</p><h2 id="order-dialog-title" className="mt-1 font-display text-2xl font-semibold">{selected.customer_name}</h2><p className="mt-1 text-xs text-text-secondary">{dateTime(selected.created_at)} · {selected.customer_phone}</p></div>
                 <button type="button" className={`${buttonClass} border border-border-subtle bg-admin-surface-elevated px-3`} onClick={() => setSelectedId(null)} aria-label="Cerrar detalle">Cerrar</button>
               </div>
-              <div className="mt-4 grid grid-cols-4 gap-1 border-b border-border-subtle" role="tablist" aria-label="Secciones del pedido">
-                {([ ["summary", "Resumen"], ["payments", "Pagos"], ["tracking", "Seguimiento"], ["notes", "Notas"] ] as [Section, string][]).map(([value, label]) => <button type="button" role="tab" aria-selected={section === value} key={value} onClick={() => setSection(value)} className={`min-h-11 border-b-2 px-1 text-xs font-semibold sm:text-sm ${section === value ? "border-brand-primary text-brand-primary" : "border-transparent text-text-secondary"}`}>{label}</button>)}
+              <div className="mt-4 grid grid-cols-3 gap-1 border-b border-border-subtle" role="tablist" aria-label="Secciones del pedido">
+                {([ ["summary", "Resumen"], ["payments", "Pagos"], ["notes", "Notas"] ] as [Section, string][]).map(([value, label]) => <button type="button" role="tab" aria-selected={section === value} key={value} onClick={() => setSection(value)} className={`min-h-11 border-b-2 px-1 text-xs font-semibold sm:text-sm ${section === value ? "border-brand-primary text-brand-primary" : "border-transparent text-text-secondary"}`}>{label}</button>)}
               </div>
 
               {section === "summary" && <div className="space-y-5 py-5">
-                <div className="flex items-center justify-between gap-3"><h3 className="font-semibold">Productos ({selected.items.length})</h3><StatusBadge context="order" status={selected.order_status} /></div>
+                <h3 className="font-semibold">Productos ({selected.items.length})</h3>
                 <ul className="space-y-2">{selected.items.map(item => <li className="flex justify-between gap-3 rounded-xl bg-admin-surface-elevated p-3 text-sm" key={item.id}><span className="min-w-0">{item.product_name_snapshot}<small className="block text-text-secondary">{item.quantity} {item.quantity === 1 ? "unidad" : "unidades"} · {availabilitySnapshotLabels[item.availability_snapshot]}</small>{item.stock_deducted_quantity !== null && <small className="block font-semibold text-admin-success">{item.stock_deducted_quantity === 0 ? "Sin descuento de inventario" : `Inventario descontado: ${item.stock_deducted_quantity}`}</small>}{item.stock_deducted_quantity === null && selected.order_status !== "pending_review" && <small className="block text-text-secondary">Descuento sin registro por línea; revisa inventario.</small>}</span><strong className="shrink-0">{money(Number(item.unit_price_snapshot) * item.quantity)}</strong></li>)}</ul>
                 <div className="rounded-2xl bg-surface-soft p-4">
                   <label className="block text-xs font-semibold text-text-secondary" htmlFor={`confirmed-total-${selected.id}`}>Precio acordado (CRC)
                     <input className={fieldClass} id={`confirmed-total-${selected.id}`} type="number" min="0.01" max="9999999999.99" step="0.01" value={totalDraft} onChange={event => setTotalDrafts(current => ({ ...current, [selected.id]: event.target.value }))} />
                   </label>
-                  <p className="mt-2 text-xs leading-5 text-text-secondary">Precio estimado original: {money(Number(selected.estimated_total))}. Después de guardar el precio, confirma el pedido en Seguimiento para registrar la disponibilidad.</p>
+                  <p className="mt-2 text-xs leading-5 text-text-secondary">Precio estimado original: {money(Number(selected.estimated_total))}. Después de guardar el precio, confirma el pedido desde su estado para registrar la disponibilidad.</p>
                   {selected.confirmed_total !== null && <p className="mt-2 text-sm">Total confirmado: <strong>{money(selected.confirmed_total)}</strong></p>}
                   <button className={`${buttonClass} mt-3 border border-brand-primary text-brand-primary hover:bg-admin-hover`} type="button" disabled={saving === selected.id || !totalDraft} aria-busy={saving === selected.id} onClick={() => void saveConfirmedTotal(selected)}>{saving === selected.id ? "Guardando…" : "Guardar precio acordado"}</button>
                 </div>
-                <div className="rounded-2xl bg-surface-card p-4"><div className="flex justify-between text-sm"><span>Pagado</span><strong>{money(paid)}</strong></div><div className="mt-2 flex justify-between text-sm"><span>Saldo pendiente</span><strong>{balance === null ? "Confirma el precio" : money(balance)}</strong></div>{selected.confirmed_total !== null && <><div className="mt-3 h-2 overflow-hidden rounded-full bg-admin-surface-elevated" role="progressbar" aria-label="Progreso de pago" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(progress)}><div className="h-full rounded-full bg-admin-progress" style={{ width: `${progress}%` }} /></div><p className="mt-1 text-right text-xs text-text-secondary">{Math.round(progress)}% pagado</p></>}</div>
                 <div className="flex gap-2"><button className={`${buttonClass} flex-1 bg-brand-primary text-admin-on-primary`} type="button" onClick={() => setSection("payments")}>Ver pagos</button>{selectedWhatsAppUrl ? <a className={`${buttonClass} flex-1 border border-admin-whatsapp text-admin-whatsapp hover:bg-admin-whatsapp-surface`} href={selectedWhatsAppUrl} target="_blank" rel="noreferrer">WhatsApp</a> : <span className={`${buttonClass} flex-1 border border-border-subtle text-center text-text-secondary opacity-60`} aria-disabled="true" title="Revisa el número de teléfono del cliente">WhatsApp no disponible</span>}</div>
+                <details className="rounded-2xl border border-border-subtle bg-admin-surface-elevated p-4">
+                  <summary className="min-h-11 cursor-pointer content-center font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary focus-visible:ring-offset-2">Historial de cambios</summary>
+                  {selected.history.length === 0 ? <p className="mt-2 text-sm text-text-secondary">Aún no hay cambios registrados.</p> : <ol className="mt-3 space-y-3">{selected.history.map(change => <li key={change.id} className="relative border-l border-border-subtle pb-1 pl-4 text-sm last:pb-0"><span className="absolute -left-[5px] top-1 h-2.5 w-2.5 rounded-full bg-brand-primary" aria-hidden="true" /><div className="flex flex-wrap justify-between gap-2"><strong>{historyTypeLabels[change.status_type] ?? "Cambio"}: {change.previous_value ? `${labels[change.previous_value] ?? change.previous_value} → ` : ""}{labels[change.next_value] ?? change.next_value}</strong><time className="text-xs text-text-secondary" dateTime={change.created_at}>{dateTime(change.created_at)}</time></div>{change.note && <p className="mt-1 text-text-secondary">{change.note}</p>}</li>)}</ol>}
+                </details>
               </div>}
 
               {section === "payments" && <div className="space-y-5 py-5">
@@ -409,31 +487,6 @@ export default function OrderManager({ initialOrders }: Props) {
                   <button className={`${buttonClass} mt-4 w-full bg-brand-primary text-admin-on-primary`} type="button" disabled={saving === selected.id || !amountDrafts[selected.id]} aria-busy={saving === selected.id} onClick={() => void recordPayment(selected)}>{saving === selected.id ? "Guardando…" : "Guardar pago"}</button>
                 </div>}
                 <div><h3 className="font-semibold">Historial de pagos</h3>{selected.payments.length === 0 ? <p className="mt-2 text-sm text-text-secondary">Aún no hay pagos registrados.</p> : <ol className="mt-3 space-y-2">{selected.payments.map(payment => <li className="rounded-xl border border-border-subtle bg-admin-surface-elevated p-3 text-sm" key={payment.id}><div className="flex flex-wrap justify-between gap-2"><strong>{money(Number(payment.amount))} · {labels[payment.payment_method]}</strong><time className="text-xs text-text-secondary" dateTime={payment.received_at}>{dateTime(payment.received_at)}</time></div>{payment.note && <p className="mt-1 text-text-secondary">{payment.note}</p>}</li>)}</ol>}</div>
-              </div>}
-
-              {section === "tracking" && <div className="space-y-5 py-5">
-                <p className="text-sm text-text-secondary">Elige Confirmado en Pedido y guarda los cambios para descontar los artículos en stock. Abastecimiento y entrega se registran por separado.</p>
-                {selected.order_status === "pending_review" && selected.confirmed_at === null && <p className="rounded-xl border-l-[3px] border-brand-primary bg-brand-primary-soft p-3 text-sm leading-6">Al confirmar se descontarán {selected.items.filter(item => item.availability_snapshot === "in_stock").reduce((total, item) => total + item.quantity, 0)} unidades que estaban en stock al solicitar. Los artículos por encargo no descontarán inventario. Si un producto llega a cero, pasará a Por encargo.</p>}
-                {selected.order_status === "confirmed" && (statusDrafts[selected.id]?.order_status === "cancelled") && <p className="rounded-xl border-l-[3px] border-admin-warning bg-admin-warning-surface p-3 text-sm leading-6">Cancelar no devuelve existencias automáticamente. Si conservas las unidades físicas, repónlas mediante un ajuste manual en inventario.</p>}
-                {fields.map(field => <fieldset key={field.key}><legend className="mb-2 text-sm font-semibold">{field.label}</legend><div className="flex flex-wrap gap-2">{field.values.map(value => {
-                  const draft = statusDrafts[selected.id] ?? selected;
-                  const terminal = selected.order_status === "cancelled" || selected.order_status === "completed";
-                  const invalidOrderTransition = field.key === "order_status" && (
-                    (terminal && value !== selected.order_status)
-                    || (selected.order_status === "confirmed" && value === "pending_review")
-                    || (selected.order_status === "pending_review" && value === "completed")
-                    || (selected.order_status === "pending_review" && selected.confirmed_at !== null && value === "confirmed")
-                  );
-                  const disabled = invalidOrderTransition || (value === "completed" && (draft.fulfillment_status !== "delivered" || selected.payment_status !== "paid"));
-                  return <button type="button" key={value} disabled={disabled} aria-pressed={draft[field.key] === value} onClick={() => changeStatus(selected.id, field.key, value)} className={`${buttonClass} border px-3 ${draft[field.key] === value ? "border-brand-primary bg-brand-primary text-admin-on-primary" : "border-border-subtle bg-admin-surface-elevated text-text-primary hover:bg-admin-hover"}`}>{labels[value]}</button>;
-                })}</div></fieldset>)}
-                <div className="grid grid-cols-1 gap-2 rounded-2xl bg-surface-soft p-3 text-xs sm:grid-cols-3"><p>Pedido<span className="mt-1 block"><StatusBadge context="order" status={(statusDrafts[selected.id] ?? selected).order_status} size="compact" /></span></p><p>Proveedor<span className="mt-1 block"><StatusBadge context="procurement" status={(statusDrafts[selected.id] ?? selected).procurement_status} size="compact" /></span></p><p>Entrega<span className="mt-1 block"><StatusBadge context="fulfillment" status={(statusDrafts[selected.id] ?? selected).fulfillment_status} size="compact" /></span></p></div>
-                {statusWarnings({ ...selected, ...(statusDrafts[selected.id] ?? {}) }).length > 0 && <div className="space-y-2" aria-label="Avisos de seguimiento">{statusWarnings({ ...selected, ...(statusDrafts[selected.id] ?? {}) }).map(warning => <p className="rounded-xl border border-admin-warning bg-admin-warning-surface px-3 py-2.5 text-sm text-admin-warning" role="status" key={warning}>{warning}</p>)}</div>}
-                <button className={`${buttonClass} w-full bg-brand-primary text-admin-on-primary`} type="button" disabled={saving === selected.id || !statusDrafts[selected.id] || fields.every(field => statusDrafts[selected.id]?.[field.key] === selected[field.key])} aria-busy={saving === selected.id} onClick={() => void saveStatuses(selected)}>{saving === selected.id ? "Guardando…" : selected.order_status === "pending_review" && statusDrafts[selected.id]?.order_status === "confirmed" ? "Confirmar pedido" : "Guardar seguimiento"}</button>
-                <div className="border-t border-border-subtle pt-4">
-                  <h3 className="font-semibold">Historial de cambios</h3>
-                  {selected.history.length === 0 ? <p className="mt-2 text-sm text-text-secondary">Aún no hay cambios registrados.</p> : <ol className="mt-3 space-y-3">{selected.history.map(change => <li key={change.id} className="relative border-l border-border-subtle pb-1 pl-4 text-sm last:pb-0"><span className="absolute -left-[5px] top-1 h-2.5 w-2.5 rounded-full bg-brand-primary" aria-hidden="true" /><div className="flex flex-wrap justify-between gap-2"><strong>{historyTypeLabels[change.status_type] ?? "Cambio"}: {change.previous_value ? `${labels[change.previous_value] ?? change.previous_value} → ` : ""}{labels[change.next_value] ?? change.next_value}</strong><time className="text-xs text-text-secondary" dateTime={change.created_at}>{dateTime(change.created_at)}</time></div>{change.note && <p className="mt-1 text-text-secondary">{change.note}</p>}</li>)}</ol>}
-                </div>
               </div>}
 
               {section === "notes" && <div className="space-y-4 py-5">

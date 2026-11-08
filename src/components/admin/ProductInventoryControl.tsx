@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { sileo } from "sileo";
 import type { AdminInventoryItem, AdminProduct } from "../../services/admin-catalog";
+import AdminConfirmDialog from "./AdminConfirmDialog";
 
 type Props = {
   item: AdminInventoryItem;
@@ -30,7 +31,6 @@ export default function ProductInventoryControl({ item, product, onEdit, onUpdat
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [confirmingOutOfStock, setConfirmingOutOfStock] = useState(false);
-  const outOfStockDialog = useRef<HTMLDialogElement>(null);
   const parsedQuantity = quantity.trim() === "" ? Number.NaN : Number(quantity);
   const quantityIsValid = Number.isInteger(parsedQuantity) && parsedQuantity >= 0 && parsedQuantity <= maxQuantity;
   const hasChanges = quantityIsValid && parsedQuantity !== item.quantity;
@@ -44,13 +44,6 @@ export default function ProductInventoryControl({ item, product, onEdit, onUpdat
     setSaveError(null);
     setSaveSuccess(false);
   }, [item.quantity]);
-
-  useEffect(() => {
-    const dialog = outOfStockDialog.current;
-    if (!dialog) return;
-    if (confirmingOutOfStock && !dialog.open) dialog.showModal();
-    else if (!confirmingOutOfStock && dialog.open) dialog.close();
-  }, [confirmingOutOfStock]);
 
   async function save(nextQuantity: number, availabilityStatus: "in_stock" | "on_order" | "out_of_stock", title: string) {
     if (saving) return;
@@ -147,22 +140,18 @@ export default function ProductInventoryControl({ item, product, onEdit, onUpdat
         </button>}
       </div>
     </div>
-    <dialog
-      aria-describedby={`out-of-stock-description-${product.id}`}
-      aria-labelledby={`out-of-stock-title-${product.id}`}
-      className="m-auto w-[calc(100%-2rem)] max-w-sm rounded-2xl border border-border-subtle bg-surface-card p-5 text-text-primary shadow-[0_20px_40px_-8px_rgba(44,26,35,0.16)] backdrop:bg-admin-overlay/45 backdrop:backdrop-blur-sm"
+    <AdminConfirmDialog
+      open={confirmingOutOfStock}
+      title="Marcar producto como agotado"
+      description={`La disponibilidad comercial de “${product.name}” cambiará a Agotado y el producto dejará de ofrecerse por encargo.`}
+      confirmLabel={saving ? "Guardando…" : "Agotado"}
+      tone="danger"
+      busy={saving}
       onCancel={() => setConfirmingOutOfStock(false)}
-      ref={outOfStockDialog}
-    >
-      <h2 className="font-display text-xl font-semibold" id={`out-of-stock-title-${product.id}`}>Marcar producto como agotado</h2>
-      <p className="mt-2 text-sm leading-6 text-text-secondary" id={`out-of-stock-description-${product.id}`}>La disponibilidad comercial de “{product.name}” cambiará a Agotado y el producto dejará de ofrecerse por encargo.</p>
-      <div className="mt-5 flex flex-wrap justify-end gap-2">
-        <button className="min-h-11 min-w-28 rounded-full border border-border-subtle px-4 text-sm font-semibold text-text-primary hover:bg-brand-primary-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary" type="button" onClick={() => setConfirmingOutOfStock(false)}>Cancelar</button>
-        <button className="min-h-11 min-w-28 rounded-full border border-admin-error px-4 text-sm font-semibold text-admin-error hover:bg-admin-error-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-admin-error disabled:cursor-wait disabled:border-border-subtle disabled:bg-admin-disabled-bg disabled:text-admin-disabled-text" type="button" onClick={() => {
-          setConfirmingOutOfStock(false);
-          void save(0, "out_of_stock", "Producto marcado como agotado");
-        }} disabled={saving}>{saving ? "Guardando…" : "Agotado"}</button>
-      </div>
-    </dialog>
+      onConfirm={() => {
+        setConfirmingOutOfStock(false);
+        void save(0, "out_of_stock", "Producto marcado como agotado");
+      }}
+    />
   </div>;
 }

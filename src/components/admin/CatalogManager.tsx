@@ -3,6 +3,7 @@ import { Toaster, sileo } from "sileo";
 import { optimizeProductImage, ProductImageProcessingError } from "../../lib/images/optimize-product-image";
 import CategoryMultiSelect from "./CategoryMultiSelect";
 import ProductInventoryControl from "./ProductInventoryControl";
+import AdminConfirmDialog from "./AdminConfirmDialog";
 import StatusBadge from "../ui/StatusBadge";
 import SearchField from "../ui/SearchField";
 import type { AdminCategory, AdminInventoryItem, AdminProduct } from "../../services/admin-catalog";
@@ -68,6 +69,7 @@ export default function CatalogManager({ initialCategories, initialProducts, ini
   const modalBusy = saving || processingImage || savingImage;
   const [failedProductImageIds, setFailedProductImageIds] = useState<Set<string>>(() => new Set());
   const [productModalOpen, setProductModalOpen] = useState(false);
+  const [imageToUnlink, setImageToUnlink] = useState<AdminProduct | null>(null);
   const productDialogRef = useRef<HTMLDialogElement>(null);
   const categoryById = useMemo(() => new Map(categories.map((category) => [category.id, category])), [categories]);
   const inventoryByProductId = useMemo(() => new Map(inventory.map((item) => [item.product_id, item])), [inventory]);
@@ -269,7 +271,7 @@ export default function CatalogManager({ initialCategories, initialProducts, ini
   }
 
   async function unlinkImage(product: AdminProduct) {
-    if (!product.image || !window.confirm("¿Desvincular la imagen de este producto?")) return;
+    if (!product.image) return;
     setSavingImage(true);
     try {
       const response = await fetch("/api/admin/product-image", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ productId: product.id }) });
@@ -288,6 +290,19 @@ export default function CatalogManager({ initialCategories, initialProducts, ini
   return (
     <>
       <Toaster position="top-right" options={{ fill: "var(--color-surface-card)", roundness: 16, duration: 4_000, styles: { title: "text-text-primary!", description: "text-text-secondary!" } }} />
+      <AdminConfirmDialog
+        open={imageToUnlink !== null}
+        title="Desvincular imagen"
+        description="¿Quieres desvincular la imagen de este producto?"
+        confirmLabel="Desvincular imagen"
+        tone="danger"
+        onCancel={() => setImageToUnlink(null)}
+        onConfirm={() => {
+          const product = imageToUnlink;
+          setImageToUnlink(null);
+          if (product) void unlinkImage(product);
+        }}
+      />
       <section className="grid justify-start gap-6">
         <div className="rounded-[20px] border border-border-subtle bg-surface-card p-6 shadow-[0_4px_20px_-2px_rgba(134,54,93,0.05)] sm:p-8">
           <div className="flex flex-wrap items-center justify-between gap-5">
@@ -396,7 +411,7 @@ export default function CatalogManager({ initialCategories, initialProducts, ini
                   <input className="sr-only" type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif" disabled={processingImage || savingImage || saving} aria-busy={processingImage || savingImage} onChange={(event) => { void selectImage(event.currentTarget.files?.[0]); event.currentTarget.value = ""; }} />
                 </label>
                 {selectedImage && <button className="ml-2 min-h-11 rounded-full px-4 text-sm font-semibold text-text-secondary hover:bg-admin-hover disabled:opacity-60" type="button" disabled={saving} onClick={() => setSelectedImage(null)}>Descartar selección</button>}
-                {product?.image && <div className="mt-4"><button className="min-h-11 rounded-full px-4 text-sm font-semibold text-brand-primary hover:bg-admin-hover disabled:opacity-60" type="button" disabled={savingImage || saving} onClick={() => void unlinkImage(product)}>Desvincular imagen</button></div>}
+                {product?.image && <div className="mt-4"><button className="min-h-11 rounded-full px-4 text-sm font-semibold text-brand-primary hover:bg-admin-hover disabled:opacity-60" type="button" disabled={savingImage || saving} onClick={() => setImageToUnlink(product)}>Desvincular imagen</button></div>}
               </section>;
             })()}
             </div>

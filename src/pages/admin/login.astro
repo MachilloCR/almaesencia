@@ -1,6 +1,5 @@
 ---
 import BaseLayout from "../../layouts/BaseLayout.astro";
-import AdminAppearanceSelector from "../../components/admin/AdminAppearanceSelector.astro";
 
 const error = Astro.url.searchParams.get("error");
 
@@ -27,8 +26,6 @@ if (Astro.locals.user) {
       <p class="mt-3 text-sm leading-6 text-text-secondary">
         Ingresa con el correo y la contraseña autorizados para gestionar el catálogo y los pedidos.
       </p>
-      <AdminAppearanceSelector />
-
       {
         errorMessage && (
           <div class="mt-6 border-l-[3px] border-brand-primary bg-brand-primary-soft px-4 py-3 text-sm leading-6 text-text-primary" role="alert">
