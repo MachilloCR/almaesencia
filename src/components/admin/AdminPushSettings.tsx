@@ -147,7 +147,7 @@ export default function AdminPushSettings() {
             Desactivar avisos
           </button>
         ) : state === "inactive" ? (
-          <button className="min-h-11 rounded-full bg-brand-primary px-4 text-xs font-semibold text-white transition hover:bg-brand-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary focus-visible:ring-offset-2" type="button" onClick={activateNotifications}>
+          <button className="min-h-11 rounded-full bg-brand-primary px-4 text-xs font-semibold text-admin-on-primary transition hover:bg-brand-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary focus-visible:ring-offset-2" type="button" onClick={activateNotifications}>
             Activar avisos
           </button>
         ) : null}

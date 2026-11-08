@@ -5,9 +5,12 @@ type SearchFieldProps = {
   value: string;
   onChange: (value: string) => void;
   className?: string;
+  variant?: "public" | "admin";
 };
 
-export default function SearchField({ id, label, placeholder, value, onChange, className = "" }: SearchFieldProps) {
+export default function SearchField({ id, label, placeholder, value, onChange, className = "", variant = "public" }: SearchFieldProps) {
+  const inputSurface = variant === "admin" ? "admin-field bg-admin-input" : "bg-white";
+
   return (
     <label className={`block text-xs font-semibold text-text-secondary ${className}`} htmlFor={id}>
       {label}
@@ -17,7 +20,7 @@ export default function SearchField({ id, label, placeholder, value, onChange, c
           <path d="m20 20-4-4" />
         </svg>
         <input
-          className="min-h-12 w-full rounded-lg border border-border-subtle bg-white py-2 pl-10 pr-3 text-sm font-normal text-text-primary outline-none placeholder:text-text-secondary/70 focus:border-brand-primary focus:ring-3 focus:ring-brand-primary/12"
+          className={`min-h-12 w-full rounded-lg border border-border-subtle ${inputSurface} py-2 pl-10 pr-3 text-sm font-normal text-text-primary outline-none placeholder:text-text-secondary/70 focus:border-brand-primary focus:ring-3 focus:ring-brand-primary/12`}
           id={id}
           type="search"
           placeholder={placeholder}

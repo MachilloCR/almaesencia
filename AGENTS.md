@@ -554,3 +554,14 @@ Estas reglas aplican a todos los cambios futuros. El plan de etapas y los prompt
 - No ejecutes `git add`, `git commit`, `git push` ni despliegues, salvo autorización expresa; deja los cambios revisables y sin staging.
 - Al terminar, informa: diagnóstico, trabajo realizado, archivos afectados, resultados reales de las verificaciones, SQL preparado o configuración externa pendiente, riesgos, cómo revisar manualmente, y siguiente paso. Sugiere un mensaje de commit en inglés sin ejecutarlo.
 - Si una decisión afecta reglas del negocio, datos, permisos o costes, presenta opciones concretas y espera una respuesta antes de implementarla.
+
+## Convenciones del tema administrativo
+
+- El tema solo se activa en layouts administrativos con `adminApp` y el atributo `data-admin-theme` de `<html>`. No lo apliques globalmente ni leas la preferencia en rutas públicas.
+- Consume tokens semánticos como `surface`, `surface-card`, `surface-soft`, `border-subtle`, `text-primary`, `text-secondary`, `brand-primary` y los tokens `admin-*` definidos en `src/styles/global.css`. No agregues colores literales a componentes administrativos cuando exista un token apropiado.
+- Usa los tokens `status-*` para los badges; conserva su contraste, icono y etiqueta visible en ambos temas.
+- Los tokens base representan el tema claro; las variables bajo `html[data-admin-theme="dark"]` representan el oscuro. Conserva ambas definiciones al introducir un token nuevo.
+- Inicializa el tema en el `<head>` antes del primer render visual. Accede a `window`, `localStorage` y `matchMedia` solo en código de cliente; limpia listeners al salir de la página.
+- Para componentes compartidos con el catálogo público, conserva el estilo público por defecto y habilita los estilos administrativos mediante una variante explícita. Comprueba que las rutas públicas no reciben `data-admin-theme`.
+- Los portales y notificaciones deben consumir tokens heredados del documento o recibir una clase/variante administrativa explícita. No cambies estilos compartidos para corregir solo el panel.
+- Mantén visibles foco, errores, disabled, loading y estados seleccionados en ambos temas; conserva etiquetas e iconos para que los estados no dependan solo del color.

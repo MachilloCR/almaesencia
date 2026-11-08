@@ -21,11 +21,77 @@ const {
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="description" content={description} />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    {adminApp && <meta name="theme-color" content="#FDF8F7" />}
+    {adminApp && (
+      <script is:inline>
+        (() => {
+          const key = "alma-esencia-admin-theme";
+          const root = document.documentElement;
+          const media = window.matchMedia("(prefers-color-scheme: dark)");
+          const validPreferences = ["light", "dark", "system"];
+          let preference = "system";
+
+          try {
+            const stored = window.localStorage.getItem(key);
+            if (stored && validPreferences.includes(stored)) preference = stored;
+          } catch {
+            // Storage may be unavailable; the system preference remains usable.
+          }
+
+          const applyTheme = () => {
+            const theme = preference === "system" ? (media.matches ? "dark" : "light") : preference;
+            root.dataset.adminThemePreference = preference;
+            root.dataset.adminTheme = theme;
+            document.querySelector('meta[name="theme-color"]')?.setAttribute("content", theme === "dark" ? "#171419" : "#FDF8F7");
+          };
+
+          const setPreference = (nextPreference) => {
+            if (!validPreferences.includes(nextPreference)) return;
+            preference = nextPreference;
+            try {
+              window.localStorage.setItem(key, preference);
+            } catch {
+              // The selection still applies until this page is closed.
+            }
+            applyTheme();
+          };
+
+          const onPreferenceChange = (event) => {
+            const target = event.target;
+            if (target instanceof HTMLInputElement && target.name === "admin-theme-preference") {
+              setPreference(target.value);
+            }
+          };
+
+          applyTheme();
+          document.addEventListener("change", onPreferenceChange);
+
+          const onSystemThemeChange = () => {
+            if (preference === "system") applyTheme();
+          };
+          const onStorageChange = (event) => {
+            if (event.key !== key) return;
+            preference = event.newValue && validPreferences.includes(event.newValue) ? event.newValue : "system";
+            applyTheme();
+          };
+          const cleanup = (event) => {
+            if (event.persisted) return;
+            media.removeEventListener("change", onSystemThemeChange);
+            window.removeEventListener("storage", onStorageChange);
+            document.removeEventListener("change", onPreferenceChange);
+            window.removeEventListener("pagehide", cleanup);
+          };
+
+          media.addEventListener("change", onSystemThemeChange);
+          window.addEventListener("storage", onStorageChange);
+          window.addEventListener("pagehide", cleanup);
+        })();
+      </script>
+    )}
     {adminApp && (
       <>
         <link rel="manifest" href="/admin/manifest.webmanifest" />
         <link rel="apple-touch-icon" href="/admin/icon-180.png" />
-        <meta name="theme-color" content="#86365D" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-title" content="Alma Esencia CR" />
         <meta name="mobile-web-app-capable" content="yes" />

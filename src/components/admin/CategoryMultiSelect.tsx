@@ -8,13 +8,14 @@ type Props = {
   onChange: (categoryIds: string[]) => void;
   onCreateCategory: (name: string) => Promise<AdminCategory>;
   disabled?: boolean;
+  invalid?: boolean;
 };
 
 function normalizeName(value: string) {
   return value.trim().replace(/\s+/g, " ").toLocaleLowerCase("es");
 }
 
-export default function CategoryMultiSelect({ categories, selectedIds, onChange, onCreateCategory, disabled = false }: Props) {
+export default function CategoryMultiSelect({ categories, selectedIds, onChange, onCreateCategory, disabled = false, invalid = false }: Props) {
   const listboxId = useId();
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
@@ -88,14 +89,14 @@ export default function CategoryMultiSelect({ categories, selectedIds, onChange,
         <span className="font-semibold text-text-primary">Categorías</span>
         <span className="text-xs text-text-secondary">{selectedIds.length} {selectedIds.length === 1 ? "seleccionada" : "seleccionadas"}</span>
       </div>
-      <div className="overflow-hidden rounded-xl border border-[#E7CCD8] bg-white focus-within:border-brand-primary focus-within:ring-3 focus-within:ring-brand-primary/12">
+      <div className="overflow-hidden rounded-xl border border-admin-category-border bg-admin-input focus-within:border-brand-primary focus-within:ring-3 focus-within:ring-brand-primary/12">
         <div className="flex flex-wrap items-center gap-2 p-2">
           {selected.map((category) => (
             <span className="inline-flex max-w-full items-center gap-1 rounded-full bg-brand-primary-soft py-1 pl-3 pr-1 text-sm font-semibold text-brand-primary" key={category.id}>
               <span className="max-w-48 truncate">{category.name}{category.is_active ? "" : " (inactiva)"}</span>
               <button
                 aria-label={`Quitar categoría ${category.name}`}
-                className="inline-flex size-8 shrink-0 items-center justify-center rounded-full hover:bg-white focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-brand-primary disabled:opacity-50"
+                className="inline-flex size-11 shrink-0 items-center justify-center rounded-full hover:bg-admin-hover focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-brand-primary disabled:text-admin-disabled-text"
                 disabled={disabled}
                 onClick={() => {
                   const nextIds = selectedIdsRef.current.filter((id) => id !== category.id);
@@ -115,10 +116,12 @@ export default function CategoryMultiSelect({ categories, selectedIds, onChange,
               aria-activedescendant={open ? activeOptionId : undefined}
               aria-autocomplete="list"
               aria-controls={listboxId}
+              aria-describedby={invalid ? "category-selection-error" : undefined}
               aria-expanded={open}
               aria-label="Buscar o crear categoría"
+              aria-invalid={invalid || undefined}
               autoComplete="off"
-              className="min-h-9 min-w-0 flex-1 rounded-lg border border-border-subtle bg-white px-3 text-sm text-text-primary outline-none placeholder:text-text-secondary/70 focus:border-brand-primary disabled:opacity-50"
+              className="admin-field min-h-11 min-w-0 flex-1 rounded-lg border border-border-subtle bg-admin-input px-3 text-sm text-text-primary outline-none placeholder:text-text-secondary/70 focus:border-brand-primary disabled:bg-admin-disabled-bg disabled:text-admin-disabled-text"
               disabled={disabled}
               onChange={(event) => { setQuery(event.target.value); setOpen(true); setActiveIndex(0); }}
               onFocus={() => setOpen(true)}
@@ -131,7 +134,7 @@ export default function CategoryMultiSelect({ categories, selectedIds, onChange,
               aria-controls={listboxId}
               aria-expanded={open}
               aria-label={open ? "Ocultar categorías disponibles" : "Mostrar categorías disponibles"}
-              className="inline-flex size-10 shrink-0 items-center justify-center rounded-full text-brand-primary hover:bg-brand-primary-soft focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-brand-primary disabled:opacity-50"
+              className="inline-flex size-11 shrink-0 items-center justify-center rounded-full text-brand-primary hover:bg-brand-primary-soft focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-brand-primary disabled:text-admin-disabled-text"
               disabled={disabled}
               onClick={() => { setOpen((current) => !current); setActiveIndex(0); }}
               onMouseDown={(event) => event.preventDefault()}
@@ -149,7 +152,7 @@ export default function CategoryMultiSelect({ categories, selectedIds, onChange,
             <li key={category.id} role="presentation">
               <button
                 aria-selected={activeIndex === index}
-                className={`flex min-h-10 w-full items-center justify-between rounded-lg px-3 text-left text-sm ${activeIndex === index ? "bg-brand-primary-soft text-brand-primary" : "text-text-primary hover:bg-brand-primary-soft"}`}
+                className={`flex min-h-11 w-full items-center justify-between rounded-lg px-3 text-left text-sm ${activeIndex === index ? "bg-brand-primary-soft text-brand-primary" : "text-text-primary hover:bg-brand-primary-soft"}`}
                 id={`${listboxId}-option-${index}`}
                 onClick={() => selectCategory(category)}
                 onMouseDown={(event) => event.preventDefault()}
@@ -166,8 +169,9 @@ export default function CategoryMultiSelect({ categories, selectedIds, onChange,
             <li role="presentation">
               <button
                 aria-selected={activeIndex === suggestions.length}
-                className={`flex min-h-10 w-full items-center justify-between rounded-lg px-3 text-left text-sm font-semibold ${activeIndex === suggestions.length ? "bg-brand-primary-soft text-brand-primary" : "text-brand-primary hover:bg-brand-primary-soft"}`}
+                className={`flex min-h-11 w-full items-center justify-between rounded-lg px-3 text-left text-sm font-semibold ${activeIndex === suggestions.length ? "bg-brand-primary-soft text-brand-primary" : "text-brand-primary hover:bg-brand-primary-soft"} disabled:cursor-wait disabled:bg-admin-disabled-bg disabled:text-admin-disabled-text`}
                 disabled={creating || disabled}
+                aria-busy={creating}
                 id={`${listboxId}-option-${suggestions.length}`}
                 onClick={() => void createCategory()}
                 onMouseDown={(event) => event.preventDefault()}
