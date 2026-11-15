@@ -370,26 +370,34 @@ export default function OrderManager({ initialOrders }: Props) {
       ) : visibleOrders.length === 0 ? (
         <div className="mt-6 rounded-[20px] border border-dashed border-border-subtle bg-surface-card p-10 text-center text-sm text-text-secondary">No hay pedidos que coincidan con la búsqueda o el filtro.</div>
       ) : (
-        <ul className="grid gap-4 lg:grid-cols-2 2xl:grid-cols-3">
+        <ul className="flex flex-wrap items-start gap-4">
           {visibleOrders.map(order => {
             const contactUrl = whatsappUrl(order);
             const paid = totalPaid(order);
             const balance = order.confirmed_total === null ? null : Math.max(Math.round((order.confirmed_total - paid) * 100) / 100, 0);
             const itemCount = order.items.reduce((total, item) => total + item.quantity, 0);
             return (
-              <li className="min-w-0 rounded-[20px] border border-border-subtle bg-surface-card p-3 text-text-primary shadow-[0_4px_20px_-2px_rgba(134,54,93,0.05)] sm:p-4" key={order.id}>
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div className="min-w-0">
+              <li className="w-full max-w-[450px] min-w-0 rounded-[20px] border border-border-subtle bg-surface-card p-3 text-text-primary shadow-[0_4px_20px_-2px_rgba(134,54,93,0.05)] sm:p-4" key={order.id}>
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0 flex-1">
                     <p className="text-xs leading-5"><span className="font-semibold text-brand-primary">#{order.order_number}</span><span className="text-text-secondary"> · {dateTime(order.created_at)}</span></p>
                     <h2 className="mt-1 truncate text-lg font-semibold leading-6">{order.customer_name}</h2>
                   </div>
                   <AdminStatusBadgeMenu context="order" label="pedido" status={order.order_status} options={getStatusOptions(order, "order_status")} disabled={saving === order.id} busy={saving === order.id} onChange={value => void updateStatus(order, "order_status", value)} />
                 </div>
 
-                <div className="mt-4 space-y-2.5 text-sm">
-                  {order.items.slice(0, 2).map(item => <div className="flex items-start justify-between gap-3" key={item.id}><span className="min-w-0 break-words text-text-secondary">{item.quantity} × {item.product_name_snapshot}</span><span className="shrink-0 font-semibold">{money(Number(item.unit_price_snapshot) * item.quantity)}</span></div>)}
-                  {order.items.length > 2 && <p className="text-xs text-text-secondary">y {order.items.length - 2} productos más</p>}
-                </div>
+                <ul className="mt-4 divide-y divide-border-subtle text-sm">
+                  {order.items.slice(0, 2).map(item => (
+                    <li className="flex items-start justify-between gap-3 py-2.5 first:pt-0" key={item.id}>
+                      <span className="flex min-w-0 items-start gap-2 text-text-secondary">
+                        <span aria-hidden="true" className="mt-2 size-1.5 shrink-0 rounded-full bg-brand-primary" />
+                        <span className="min-w-0 break-words">{item.quantity} × {item.product_name_snapshot}</span>
+                      </span>
+                      <span className="shrink-0 font-semibold">{money(Number(item.unit_price_snapshot) * item.quantity)}</span>
+                    </li>
+                  ))}
+                </ul>
+                {order.items.length > 2 && <p className="mt-2 text-xs text-text-secondary">y {order.items.length - 2} productos más</p>}
 
                 <div className="mt-4 space-y-3 rounded-xl bg-surface-soft p-3 text-sm">
                   <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
