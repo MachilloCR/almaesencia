@@ -303,20 +303,13 @@ export default function CatalogManager({ initialCategories, initialProducts, ini
           if (product) void unlinkImage(product);
         }}
       />
-      <section className="grid justify-start gap-6">
-        <div className="rounded-[20px] border border-border-subtle bg-surface-card p-6 shadow-[0_4px_20px_-2px_rgba(134,54,93,0.05)] sm:p-8">
-          <div className="flex flex-wrap items-center justify-between gap-5">
-            <div>
-              <p className="text-xs font-semibold tracking-[0.14em] text-brand-primary uppercase">Productos</p>
-              <h2 className="mt-2 font-display text-2xl font-semibold">Administra el catálogo</h2>
-              <p className="mt-2 text-sm leading-6 text-text-secondary">Crea productos, consulta existencias y ajusta cada artículo desde esta página.</p>
-            </div>
-            <button className="min-h-11 rounded-full bg-brand-primary px-5 py-3 text-sm font-semibold text-admin-on-primary hover:bg-brand-primary-hover disabled:cursor-not-allowed disabled:bg-admin-disabled-bg disabled:text-admin-disabled-text" type="button" onClick={createProductDraft}>
-              Crear producto
-            </button>
-          </div>
-
-          {activeCategories.length === 0 && <p className="mt-4 text-sm text-text-secondary">Puedes crear la primera categoría desde el modal de producto.</p>}
+      <section className="space-y-3">
+        <div className="flex justify-end">
+          <button className="min-h-11 rounded-full bg-brand-primary px-5 py-3 text-sm font-semibold text-admin-on-primary hover:bg-brand-primary-hover disabled:cursor-not-allowed disabled:bg-admin-disabled-bg disabled:text-admin-disabled-text" type="button" onClick={createProductDraft}>
+            Crear producto
+          </button>
+        </div>
+        {activeCategories.length === 0 && <p className="text-sm text-text-secondary">Puedes crear la primera categoría desde el modal de producto.</p>}
 
           <dialog
             ref={productDialogRef}
@@ -422,17 +415,15 @@ export default function CatalogManager({ initialCategories, initialProducts, ini
             </div>
           </form>
           </dialog>
-        </div>
 
       </section>
 
       <section className="mt-10">
-        <div className="flex flex-wrap items-end justify-between gap-4"><div><p className="text-xs font-semibold tracking-[0.14em] text-brand-primary uppercase">Catálogo interno</p><h2 className="mt-2 font-display text-2xl font-semibold">Productos registrados</h2></div><p className="text-sm text-text-secondary" aria-live="polite">Mostrando {filteredProducts.length} de {products.length} producto{products.length === 1 ? "" : "s"}</p></div>
+        <div className="flex justify-end"><p className="text-sm text-text-secondary" aria-live="polite">Mostrando {filteredProducts.length} de {products.length} producto{products.length === 1 ? "" : "s"}</p></div>
         <div className="mt-5 rounded-[16px] border border-border-subtle bg-surface-card p-4 sm:p-5">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <h3 className="text-sm font-semibold text-text-primary">Filtrar productos</h3>
-              <p className="mt-1 text-xs text-text-secondary">Combina búsqueda y opciones para encontrar un producto.</p>
             </div>
             {hasFilters && <button className="inline-flex min-h-11 items-center justify-center rounded-full border border-brand-primary px-4 text-sm font-semibold text-brand-primary transition-colors hover:bg-brand-primary-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary focus-visible:ring-offset-2" type="button" onClick={clearFilters}>Limpiar filtros</button>}
           </div>

@@ -159,7 +159,7 @@ export default function OrderManager({ initialOrders }: Props) {
   const [confirmation, setConfirmation] = useState<ConfirmationRequest | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [section, setSection] = useState<Section>("summary");
-  const [filter, setFilter] = useState("all");
+  const [filter, setFilter] = useState<Order["order_status"]>("pending_review");
   const [search, setSearch] = useState("");
   const [amountDrafts, setAmountDrafts] = useState<Record<string, string>>({});
   const [noteDrafts, setNoteDrafts] = useState<Record<string, string>>({});
@@ -178,21 +178,16 @@ export default function OrderManager({ initialOrders }: Props) {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [selectedId, saving]);
   const counts = useMemo(() => ({
-    all: orders.filter(order => order.order_status !== "cancelled").length,
+    pending_review: orders.filter(order => order.order_status === "pending_review").length,
+    confirmed: orders.filter(order => order.order_status === "confirmed").length,
+    completed: orders.filter(order => order.order_status === "completed").length,
     cancelled: orders.filter(order => order.order_status === "cancelled").length,
-    review: orders.filter(order => order.order_status === "pending_review").length,
-    process: orders.filter(order => !["pending_review", "cancelled", "completed"].includes(order.order_status)).length,
-    delivery: orders.filter(order => order.order_status !== "cancelled" && order.order_status !== "completed" && order.fulfillment_status === "ready").length,
   }), [orders]);
   const visibleOrders = useMemo(() => {
     const query = search.trim().toLocaleLowerCase("es-CR");
     return orders.filter(order => {
       const matchesSearch = !query || order.customer_name.toLocaleLowerCase("es-CR").includes(query) || order.order_number.toLocaleLowerCase("es-CR").includes(query) || order.customer_phone.includes(query);
-      const matchesFilter = (filter === "all" && order.order_status !== "cancelled")
-        || (filter === "cancelled" && order.order_status === "cancelled")
-        || (filter === "review" && order.order_status === "pending_review")
-        || (filter === "process" && !["pending_review", "cancelled", "completed"].includes(order.order_status))
-        || (filter === "delivery" && order.order_status !== "cancelled" && order.order_status !== "completed" && order.fulfillment_status === "ready");
+      const matchesFilter = order.order_status === filter;
       return matchesSearch && matchesFilter;
     });
   }, [orders, search, filter]);
@@ -361,7 +356,7 @@ export default function OrderManager({ initialOrders }: Props) {
         <SearchField id="admin-order-search" label="Buscar pedido" placeholder="Cliente, teléfono o número de pedido" value={search} onChange={setSearch} variant="admin" />
         <div className="scrollbar-none flex gap-2 overflow-x-auto pb-1" aria-label="Filtrar pedidos">
           {([
-            ["all", "Todos", counts.all], ["review", "Por revisar", counts.review], ["process", "En proceso", counts.process], ["delivery", "Por entregar", counts.delivery], ["cancelled", "Cancelados", counts.cancelled],
+            ["pending_review", "Pendientes", counts.pending_review], ["confirmed", "Confirmados", counts.confirmed], ["completed", "Completados", counts.completed], ["cancelled", "Cancelados", counts.cancelled],
           ] as const).map(([value, label, count]) => (
             <button key={value} type="button" onClick={() => setFilter(value)} aria-pressed={filter === value} className={`${buttonClass} shrink-0 border px-4 ${filter === value ? "border-brand-primary bg-brand-primary text-admin-on-primary" : "border-border-subtle bg-admin-surface-elevated text-text-secondary hover:bg-admin-hover"}`}>
               {label}<span className={`ml-2 rounded-full px-2 py-0.5 text-xs ${filter === value ? "bg-admin-on-primary/20" : "bg-brand-primary-soft text-brand-primary"}`}>{count}</span>
@@ -451,7 +446,11 @@ export default function OrderManager({ initialOrders }: Props) {
             <section role="dialog" aria-modal="true" aria-labelledby="order-dialog-title" className="max-h-[94dvh] w-full overflow-y-auto rounded-t-[24px] bg-surface p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] shadow-[0_20px_40px_-8px_rgba(44,26,35,0.16)] sm:max-w-2xl sm:rounded-[24px] sm:p-6">
               <div className="flex items-start justify-between gap-3">
                 <div><p className="text-xs font-semibold text-brand-primary">Pedido #{selected.order_number}</p><h2 id="order-dialog-title" className="mt-1 font-display text-2xl font-semibold">{selected.customer_name}</h2><p className="mt-1 text-xs text-text-secondary">{dateTime(selected.created_at)} · {selected.customer_phone}</p></div>
-                <button type="button" className={`${buttonClass} border border-border-subtle bg-admin-surface-elevated px-3`} onClick={() => setSelectedId(null)} aria-label="Cerrar detalle">Cerrar</button>
+                <button className="inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-full text-brand-primary hover:bg-brand-primary-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary disabled:cursor-wait disabled:bg-admin-disabled-bg disabled:text-admin-disabled-text" type="button" onClick={() => setSelectedId(null)} aria-label="Cerrar ventana" disabled={saving === selected.id}>
+                  <svg aria-hidden="true" className="size-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
+                    <path d="m6 6 12 12M18 6 6 18" />
+                  </svg>
+                </button>
               </div>
               <div className="mt-4 grid grid-cols-3 gap-1 border-b border-border-subtle" role="tablist" aria-label="Secciones del pedido">
                 {([ ["summary", "Resumen"], ["payments", "Pagos"], ["notes", "Notas"] ] as [Section, string][]).map(([value, label]) => <button type="button" role="tab" aria-selected={section === value} key={value} onClick={() => setSection(value)} className={`min-h-11 border-b-2 px-1 text-xs font-semibold sm:text-sm ${section === value ? "border-brand-primary text-brand-primary" : "border-transparent text-text-secondary"}`}>{label}</button>)}
