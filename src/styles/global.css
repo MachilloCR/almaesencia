@@ -82,6 +82,10 @@ html[data-admin-theme="dark"] {
   --color-admin-on-primary: #171419;
 }
 
+html[data-admin-theme="dark"] .admin-brand-logo {
+  filter: brightness(0) invert(1);
+}
+
 @layer base {
   html {
     background: var(--color-surface);
