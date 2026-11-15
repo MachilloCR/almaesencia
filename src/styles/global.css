@@ -10,6 +10,29 @@
   --color-border-subtle: #eedfe5;
   --color-text-primary: #2c1a23;
   --color-text-secondary: #6e5d66;
+  --color-admin-surface-secondary: #fff0f4;
+  --color-admin-surface-elevated: #ffffff;
+  --color-admin-hover: #ffffff;
+  --color-admin-control-border: #e8ccd8;
+  --color-admin-category-border: #e7ccd8;
+  --color-admin-inventory-surface: #fff5f8;
+  --color-admin-inventory-border: #f4d3e0;
+  --color-admin-image-placeholder: #f1ece9;
+  --color-admin-focus: #86365d;
+  --color-admin-input: #ffffff;
+  --color-admin-disabled-bg: #f5ebf0;
+  --color-admin-disabled-text: #6e5d66;
+  --color-admin-success: #2d6a4f;
+  --color-admin-success-surface: #e8f5e9;
+  --color-admin-warning: #754a0b;
+  --color-admin-warning-surface: #fef3c7;
+  --color-admin-error: #9b1c1c;
+  --color-admin-error-surface: #fef2f2;
+  --color-admin-whatsapp: #087d4b;
+  --color-admin-whatsapp-surface: #eaf8f0;
+  --color-admin-progress: #31b779;
+  --color-admin-overlay: #2c1a23;
+  --color-admin-on-primary: #ffffff;
   --color-accent-gold: #e6c594;
   --color-accent-rose: #d9a0b8;
   --color-status-success: #15803d;
@@ -21,6 +44,42 @@
   --color-status-neutral: #475569;
   --font-display: "Playfair Display", Georgia, serif;
   --font-sans: "Plus Jakarta Sans", Arial, sans-serif;
+}
+
+html[data-admin-theme="dark"] {
+  color-scheme: dark;
+  --color-brand-primary: #d46a9b;
+  --color-brand-primary-hover: #e48bb3;
+  --color-brand-primary-soft: #462a39;
+  --color-surface: #171419;
+  --color-surface-card: #242027;
+  --color-surface-soft: #302a32;
+  --color-border-subtle: #48404b;
+  --color-text-primary: #f8f3f6;
+  --color-text-secondary: #c4b8c1;
+  --color-admin-surface-secondary: #302a32;
+  --color-admin-surface-elevated: #302a32;
+  --color-admin-hover: #302a32;
+  --color-admin-control-border: #48404b;
+  --color-admin-category-border: #48404b;
+  --color-admin-inventory-surface: #302a32;
+  --color-admin-inventory-border: #48404b;
+  --color-admin-image-placeholder: #302a32;
+  --color-admin-focus: #d46a9b;
+  --color-admin-input: #242027;
+  --color-admin-disabled-bg: #462a39;
+  --color-admin-disabled-text: #c4b8c1;
+  --color-admin-success: #8dd3a9;
+  --color-admin-success-surface: #263d31;
+  --color-admin-warning: #f2c766;
+  --color-admin-warning-surface: #46361c;
+  --color-admin-error: #f49aa0;
+  --color-admin-error-surface: #47272b;
+  --color-admin-whatsapp: #83d6a7;
+  --color-admin-whatsapp-surface: #20372e;
+  --color-admin-progress: #61c58c;
+  --color-admin-overlay: #09070b;
+  --color-admin-on-primary: #171419;
 }
 
 @layer base {
@@ -38,6 +97,57 @@
   :focus-visible {
     outline: 2px solid var(--color-brand-primary);
     outline-offset: 2px;
+  }
+}
+
+@layer components {
+  .admin-field {
+    color: var(--color-text-primary);
+    background-color: var(--color-admin-input);
+    border-color: var(--color-border-subtle);
+    transition: border-color 150ms ease, box-shadow 150ms ease, background-color 150ms ease;
+  }
+
+  .admin-field::placeholder {
+    color: var(--color-text-secondary);
+    opacity: 0.72;
+  }
+
+  .admin-field:not(:disabled):hover {
+    border-color: var(--color-admin-focus);
+  }
+
+  .admin-field:disabled {
+    cursor: not-allowed;
+    color: var(--color-admin-disabled-text);
+    background-color: var(--color-admin-disabled-bg);
+  }
+
+  .admin-field[aria-invalid="true"] {
+    border-color: var(--color-admin-error);
+  }
+
+  .admin-field:user-invalid {
+    border-color: var(--color-admin-error);
+  }
+
+  .admin-field[aria-invalid="true"]:focus-visible {
+    outline: 2px solid var(--color-admin-error);
+    outline-offset: 2px;
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-admin-error) 16%, transparent);
+  }
+
+  .admin-field:user-invalid:focus-visible {
+    outline: 2px solid var(--color-admin-error);
+    outline-offset: 2px;
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-admin-error) 16%, transparent);
+  }
+
+  .admin-radio-group:disabled label {
+    cursor: not-allowed;
+    color: var(--color-admin-disabled-text);
+    border-color: var(--color-border-subtle);
+    background-color: var(--color-admin-disabled-bg);
   }
 }
 
