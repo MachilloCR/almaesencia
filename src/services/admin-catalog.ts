@@ -102,9 +102,13 @@ export async function getAdminCatalogData(supabase: AdminSupabaseClient) {
   }
 
   const products = productsResult.data;
-  const associationsResult = products.length
-    ? await supabase.from("product_categories").select("product_id, category_id").in("product_id", products.map((product) => product.id))
-    : { data: [], error: null };
+  const productIds = products.map((product) => product.id);
+  const [associationsResult, imagesResult] = productIds.length
+    ? await Promise.all([
+        supabase.from("product_categories").select("product_id, category_id").in("product_id", productIds),
+        supabase.from("product_images").select("product_id, storage_path, alt_text, sort_order").in("product_id", productIds).order("sort_order"),
+      ])
+    : [{ data: [], error: null }, { data: [], error: null }];
   if (associationsResult.error) throw new Error("No fue posible cargar las categorías de los productos.");
   const categoryIdsByProduct = new Map<string, string[]>();
   for (const association of associationsResult.data) {
@@ -112,15 +116,29 @@ export async function getAdminCatalogData(supabase: AdminSupabaseClient) {
     ids.push(association.category_id);
     categoryIdsByProduct.set(association.product_id, ids);
   }
-  const imagesResult = products.length
-    ? await supabase.from("product_images").select("product_id, storage_path, alt_text, sort_order").in("product_id", products.map((product) => product.id)).order("sort_order")
-    : { data: [], error: null };
   if (imagesResult.error) throw new Error("No fue posible cargar las imagenes del catalogo.");
-  const imageByProduct = new Map<string, AdminProductImage>();
+  const firstImageByProduct = new Map<string, { storagePath: string; altText: string }>();
   for (const image of imagesResult.data) {
-    if (imageByProduct.has(image.product_id)) continue;
-    const { data, error } = await supabase.storage.from("product-images").createSignedUrl(image.storage_path, 60 * 60);
-    imageByProduct.set(image.product_id, { storagePath: image.storage_path, altText: image.alt_text, url: error || !data ? null : data.signedUrl });
+    if (!firstImageByProduct.has(image.product_id)) {
+      firstImageByProduct.set(image.product_id, { storagePath: image.storage_path, altText: image.alt_text });
+    }
+  }
+  const imagePaths = [...new Set([...firstImageByProduct.values()].map((image) => image.storagePath))];
+  const { data: signedImages, error: signedImagesError } = imagePaths.length
+    ? await supabase.storage.from("product-images").createSignedUrls(imagePaths, 60 * 60)
+    : { data: [], error: null };
+  const signedUrlByPath = new Map<string, string>();
+  for (const image of signedImages ?? []) {
+    if (image.path && image.signedUrl && !image.error) {
+      signedUrlByPath.set(image.path, image.signedUrl);
+    }
+  }
+  const imageByProduct = new Map<string, AdminProductImage>();
+  for (const [productId, image] of firstImageByProduct) {
+    imageByProduct.set(productId, {
+      ...image,
+      url: signedImagesError ? null : signedUrlByPath.get(image.storagePath) ?? null,
+    });
   }
 
   return {

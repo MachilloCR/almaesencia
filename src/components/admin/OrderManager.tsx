@@ -358,7 +358,7 @@ export default function OrderManager({ initialOrders }: Props) {
           {([
             ["pending_review", "Pendientes", counts.pending_review], ["confirmed", "Confirmados", counts.confirmed], ["completed", "Completados", counts.completed], ["cancelled", "Cancelados", counts.cancelled],
           ] as const).map(([value, label, count]) => (
-            <button key={value} type="button" onClick={() => setFilter(value)} aria-pressed={filter === value} className={`${buttonClass} shrink-0 border px-4 ${filter === value ? "border-brand-primary bg-brand-primary text-admin-on-primary" : "border-border-subtle bg-admin-surface-elevated text-text-secondary hover:bg-admin-hover"}`}>
+            <button key={value} type="button" onClick={() => setFilter(value)} aria-pressed={filter === value} className={`${buttonClass} shrink-0 border px-4 ${filter === value ? "border-brand-primary bg-brand-primary text-admin-on-primary hover:bg-brand-primary-hover" : "border-border-subtle bg-admin-surface-elevated text-text-secondary hover:border-brand-primary hover:bg-brand-primary-soft"}`}>
               {label}<span className={`ml-2 rounded-full px-2 py-0.5 text-xs ${filter === value ? "bg-admin-on-primary/20" : "bg-brand-primary-soft text-brand-primary"}`}>{count}</span>
             </button>
           ))}
