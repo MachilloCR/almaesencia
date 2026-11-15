@@ -375,7 +375,6 @@ export default function OrderManager({ initialOrders }: Props) {
             const contactUrl = whatsappUrl(order);
             const paid = totalPaid(order);
             const balance = order.confirmed_total === null ? null : Math.max(Math.round((order.confirmed_total - paid) * 100) / 100, 0);
-            const progress = order.confirmed_total ? Math.min((paid / order.confirmed_total) * 100, 100) : 0;
             const itemCount = order.items.reduce((total, item) => total + item.quantity, 0);
             return (
               <li className="min-w-0 rounded-[20px] border border-border-subtle bg-surface-card p-3 text-text-primary shadow-[0_4px_20px_-2px_rgba(134,54,93,0.05)] sm:p-4" key={order.id}>
@@ -392,19 +391,16 @@ export default function OrderManager({ initialOrders }: Props) {
                   {order.items.length > 2 && <p className="text-xs text-text-secondary">y {order.items.length - 2} productos más</p>}
                 </div>
 
-                <div className="mt-4 rounded-xl bg-surface-soft p-3">
+                <div className="mt-4 space-y-3 rounded-xl bg-surface-soft p-3 text-sm">
                   <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
                     <span className="text-sm text-text-secondary">{order.confirmed_total === null ? "Precio estimado" : "Total confirmado"}</span>
                     <strong className="text-lg font-semibold">{money(order.confirmed_total ?? Number(order.estimated_total))}</strong>
                   </div>
-                  <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
-                    <StatusBadge context="payment" status={order.payment_status} size="compact" />
-                    <span className="text-xs text-text-secondary">{order.confirmed_total === null ? "Precio por confirmar" : `${Math.round(progress)}% pagado`}</span>
+                  <div className="flex items-baseline justify-between gap-3">
+                    <span className="text-text-secondary">Saldo abonado</span><strong>{money(paid)}</strong>
                   </div>
-                  {order.confirmed_total !== null && <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-admin-surface-elevated" role="progressbar" aria-label="Progreso de pago" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(progress)}><div className="h-full rounded-full bg-admin-progress transition-[width]" style={{ width: `${progress}%` }} /></div>}
-                  <div className="mt-3 grid grid-cols-2 gap-3 text-xs">
-                    <div><span className="block text-text-secondary">Abonado</span><strong className="mt-1 block text-sm">{money(paid)}</strong></div>
-                    <div className="text-right"><span className="block text-text-secondary">Saldo pendiente</span><strong className="mt-1 block text-sm">{balance === null ? "Por confirmar" : money(balance)}</strong></div>
+                  <div className="flex items-baseline justify-between gap-3 border-t border-border-subtle pt-3">
+                    <span className="text-text-secondary">Saldo pendiente</span><strong>{balance === null ? "Por confirmar" : money(balance)}</strong>
                   </div>
                 </div>
 
